@@ -369,7 +369,7 @@ Vigil can be run as such:
 
 ## What status variants look like?
 
-Vigil has 3 status variants, either `healthy` (no issue ongoing), `sick` (services under high load) or `dead` (outage):
+Vigil has 3 main status variants, either `healthy` (no issue ongoing), `sick` (services under high load) or `dead` (outage):
 
 ### Healthy status variant
 
@@ -382,6 +382,10 @@ Vigil has 3 status variants, either `healthy` (no issue ongoing), `sick` (servic
 ### Dead status variant
 
 ![Status Dead](https://valeriansaliou.github.io/vigil/images/status-dead.png)
+
+### Special statuses
+
+Note that a 4th status exists: `partial`. It is reported when a node has part of its replica `dead`, but can still be considered as partially degraded and not ongoing an outage. This status can only appear if you are using the `probe.service.node.min_replicas_available` option on a node.
 
 ## What do announcements look like?
 
