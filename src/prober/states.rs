@@ -42,6 +42,7 @@ pub struct ServiceStatesProbeNode {
     pub http_body: Option<String>,
     pub http_body_healthy_match: Option<Regex>,
     pub reveal_replica_name: bool,
+    pub min_replicas_available: Option<usize>,
     pub link_url: Option<String>,
     pub link_label: Option<String>,
     pub rabbitmq: Option<ServiceStatesProbeNodeRabbitMQ>,

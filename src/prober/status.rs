@@ -34,9 +34,8 @@ impl Status {
     pub fn as_icon(&self) -> &'static str {
         match self {
             &Status::Dead => "\u{274c}",
-            &Status::Sick => "\u{26a0}",
+            &Status::Sick | &Status::Partial => "\u{26a0}",
             &Status::Healthy => "\u{2705}",
-            &Status::Partial => "\u{26a0}",
         }
     }
 }

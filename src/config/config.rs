@@ -348,6 +348,8 @@ pub struct ConfigProbeServiceNode {
     pub http_body: Option<String>,
     pub http_body_healthy_match: Option<Regex>,
 
+    pub min_replicas_available: Option<usize>,
+
     #[serde(default = "defaults::probe_service_node_reveal_replica_name")]
     pub reveal_replica_name: bool,
 
@@ -357,8 +359,6 @@ pub struct ConfigProbeServiceNode {
     pub rabbitmq_queue: Option<String>,
     pub rabbitmq_queue_nack_healthy_below: Option<u32>,
     pub rabbitmq_queue_nack_dead_above: Option<u32>,
-
-    pub min_replicas_available: Option<usize>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
