@@ -5,6 +5,7 @@
 // License: Mozilla Public License v2.0 (MPL v2.0)
 
 use std::iter::FromIterator;
+use std::sync::LazyLock;
 use std::thread;
 use std::time::{Duration, SystemTime};
 use time;
@@ -50,12 +51,13 @@ use crate::notifier::webex::WebExNotifier;
 #[cfg(feature = "notifier-webhook")]
 use crate::notifier::webhook::WebHookNotifier;
 
-lazy_static! {
-    static ref TIME_NOW_FORMATTER: Vec<FormatItem<'static>> = time::format_description::parse(
-        "[hour]:[minute]:[second] UTC[offset_hour sign:mandatory]:[offset_minute]"
+#[allow(deprecated)]
+static TIME_NOW_FORMATTER: LazyLock<Vec<FormatItem<'static>>> = LazyLock::new(|| {
+    time::format_description::parse(
+        "[hour]:[minute]:[second] UTC[offset_hour sign:mandatory]:[offset_minute]",
     )
-    .expect("invalid time format");
-}
+    .expect("invalid time format")
+});
 
 const AGGREGATE_INTERVAL_SECONDS: u64 = 10;
 

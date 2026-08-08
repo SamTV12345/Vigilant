@@ -4,23 +4,23 @@
 // Copyright: 2021, Valerian Saliou <valerian@valeriansaliou.name>
 // License: Mozilla Public License v2.0 (MPL v2.0)
 
-use actix_web::{
-    dev::ServiceRequest,
-    guard,
-    middleware::{self, TrailingSlash},
-    rt, web, App, Error as ActixError, HttpServer,
+use axum::{
+    body::Body,
+    extract::Request,
+    http::{header, StatusCode},
+    middleware::{self, Next},
+    response::Response,
+    routing::{delete, get, post, put},
+    Router,
 };
-use actix_web_httpauth::{
-    extractors::{
-        basic::{BasicAuth, Config as ConfigAuth},
-        AuthenticationError,
-    },
-    middleware::HttpAuthentication,
+use rmcp::transport::streamable_http_server::{
+    session::local::LocalSessionManager,
+    tower::StreamableHttpService,
 };
-use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
-use rmcp_actix_web::transport::StreamableHttpService;
 use std::{sync::Arc, time::Duration};
 use tera::Tera;
+use tower_http::normalize_path::NormalizePathLayer;
+use tower_http::services::ServeDir;
 
 use super::mcp;
 use super::routes;
@@ -29,167 +29,185 @@ use crate::APP_CONF;
 const MCP_SSE_KEEPALIVE_SECONDS: Duration = Duration::from_secs(30);
 
 pub fn run() {
-    let runtime = rt::System::new();
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(APP_CONF.server.workers)
+        .enable_all()
+        .build()
+        .unwrap();
 
-    // Prepare templating engine
-    let templates: String = APP_CONF
-        .assets
-        .path
-        .canonicalize()
-        .unwrap()
-        .join("templates")
-        .join("*")
-        .to_str()
-        .unwrap()
-        .into();
+    runtime.block_on(async {
+        // Prepare templating engine (tera 2.x)
+        let mut tera = Tera::default();
+        let template_path = APP_CONF
+            .assets
+            .path
+            .canonicalize()
+            .unwrap()
+            .join("templates")
+            .join("index.tera");
+        tera.add_template_file(&template_path, Some("index.tera"))
+            .unwrap();
 
-    let tera = Tera::new(&templates).unwrap();
+        let tera = Arc::new(tera);
 
-    // Prepare authentication middlewares
-    let (middleware_reporter_auth, middleware_manager_auth) = (
-        HttpAuthentication::basic(authenticate_reporter),
-        HttpAuthentication::basic(authenticate_manager),
+        // Prepare MCP services (if enabled)
+        let mcp_router = if APP_CONF.server.mcp_server {
+            Some(build_mcp_router())
+        } else {
+            info!("mcp server is not enabled (this is an opt-in feature)");
+            None
+        };
+
+        // Build axum router
+        let app = build_router(tera.clone(), mcp_router);
+
+        // Bind and serve
+        let listener = tokio::net::TcpListener::bind(APP_CONF.server.inet)
+            .await
+            .unwrap();
+
+        info!("http server listening on {}", APP_CONF.server.inet);
+
+        axum::serve(listener, app).await.unwrap();
+    });
+}
+
+fn build_router(
+    tera: Arc<Tera>,
+    mcp_router: Option<Router>,
+) -> Router {
+    let assets_path = APP_CONF.assets.path.canonicalize().unwrap();
+
+    // Build authenticated sub-routers
+    let reporter_routes = Router::new()
+        .route("/{probe_id}/{node_id}", post(routes::reporter_report))
+        .route("/{probe_id}/{node_id}/{replica_id}", delete(routes::reporter_flush))
+        .layer(middleware::from_fn(basic_auth_reporter));
+
+    let manager_routes = Router::new()
+        .route("/announcements", get(routes::manager_announcements))
+        .route("/announcement", post(routes::manager_announcement_insert))
+        .route("/announcement/{announcement_id}", delete(routes::manager_announcement_retract))
+        .route("/prober/alerts", get(routes::manager_prober_alerts))
+        .route("/prober/alerts/ignored", get(routes::manager_prober_alerts_ignored_resolve))
+        .route("/prober/alerts/ignored", put(routes::manager_prober_alerts_ignored_update))
+        .layer(middleware::from_fn(basic_auth_manager));
+
+    let mut app = Router::new()
+        // Public routes
+        .route("/", get(routes::index))
+        .route("/robots.txt", get(routes::robots))
+        .route("/status/text", get(routes::status_text))
+        .route("/status/report", get(routes::status_report))
+        .route("/badge/{kind}", get(routes::badge))
+        // Authenticated sub-routers
+        .nest("/reporter", reporter_routes)
+        .nest("/manager", manager_routes)
+        // Static assets
+        .nest_service("/assets/fonts", ServeDir::new(assets_path.join("fonts")))
+        .nest_service("/assets/images", ServeDir::new(assets_path.join("images")))
+        .nest_service("/assets/stylesheets", ServeDir::new(assets_path.join("stylesheets")))
+        .nest_service("/assets/javascripts", ServeDir::new(assets_path.join("javascripts")))
+        .with_state(tera)
+        .layer(NormalizePathLayer::trim_trailing_slash());
+
+    // Nest MCP router if enabled
+    if let Some(mcp) = mcp_router {
+        app = app.nest("/mcp/probes", mcp);
+    }
+
+    app
+}
+
+fn build_mcp_router() -> Router {
+    use rmcp::transport::streamable_http_server::tower::StreamableHttpServerConfig;
+
+    let config = StreamableHttpServerConfig::default()
+        .with_sse_keep_alive(Some(MCP_SSE_KEEPALIVE_SECONDS))
+        .with_legacy_session_mode(true);
+
+    let service = StreamableHttpService::new(
+        || Ok(mcp::Probes::new()),
+        Arc::new(LocalSessionManager::default()),
+        config,
     );
 
-    // Prepare MCP services (if enabled)
-    // Notice: it makes no sense for Vigil to be a stateful MCP server, but \
-    //   unfortunately as of Sept 2025 many MCP client do not seem to support \
-    //   stateless servers yet. Therefore, for the moment, Vigil behaves as a \
-    //   stateful MCP server for wide compatibility. This may be changed to \
-    //   stateless mode and 'NeverSessionManager' in the future.
-    let mcp_services = if APP_CONF.server.mcp_server == true {
-        Some((StreamableHttpService::builder()
-            .service_factory(Arc::new(|| Ok(mcp::Probes::new())))
-            .session_manager(Arc::new(LocalSessionManager::default()))
-            .stateful_mode(true)
-            .sse_keep_alive(MCP_SSE_KEEPALIVE_SECONDS)
-            .build(),))
-    } else {
-        info!("mcp server is not enabled (this is an opt-in feature)");
+    // Convert tower service to axum router
+    let tower_service = tower::ServiceBuilder::new().service(service);
 
-        None
-    };
+    // ponyail: serve tower service as catch-all for MCP endpoints
+    Router::new().fallback_service(tower_service)
+}
 
-    // Start the HTTP server
-    let server = HttpServer::new(move || {
-        // Mount routes to HTTP server
-        // Notice: this executes as many times as there are HTTP workers.
-        let mut app = App::new()
-            .app_data(web::Data::new(tera.clone()))
-            .wrap(middleware::NormalizePath::new(TrailingSlash::Trim))
-            .service(routes::assets_javascripts)
-            .service(routes::assets_stylesheets)
-            .service(routes::assets_images)
-            .service(routes::assets_fonts)
-            .service(routes::badge)
-            .service(routes::status_text)
-            .service(routes::status_report)
-            .service(routes::robots)
-            .service(routes::index)
-            .app_data(ConfigAuth::default().realm("Reporter Token"))
-            .service(
-                web::resource("/reporter/{probe_id}/{node_id}")
-                    .wrap(middleware_reporter_auth.clone())
-                    .guard(guard::Post())
-                    .to(routes::reporter_report),
-            )
-            .service(
-                web::resource("/reporter/{probe_id}/{node_id}/{replica_id}")
-                    .wrap(middleware_reporter_auth.clone())
-                    .guard(guard::Delete())
-                    .to(routes::reporter_flush),
-            )
-            .service(
-                web::resource("/manager/announcements")
-                    .wrap(middleware_manager_auth.clone())
-                    .guard(guard::Get())
-                    .to(routes::manager_announcements),
-            )
-            .service(
-                web::resource("/manager/announcement")
-                    .wrap(middleware_manager_auth.clone())
-                    .guard(guard::Post())
-                    .to(routes::manager_announcement_insert),
-            )
-            .service(
-                web::resource("/manager/announcement/{announcement_id}")
-                    .wrap(middleware_manager_auth.clone())
-                    .guard(guard::Delete())
-                    .to(routes::manager_announcement_retract),
-            )
-            .service(
-                web::resource("/manager/prober/alerts")
-                    .wrap(middleware_manager_auth.clone())
-                    .guard(guard::Get())
-                    .to(routes::manager_prober_alerts),
-            )
-            .service(
-                web::resource("/manager/prober/alerts/ignored")
-                    .wrap(middleware_manager_auth.clone())
-                    .guard(guard::Get())
-                    .to(routes::manager_prober_alerts_ignored_resolve),
-            )
-            .service(
-                web::resource("/manager/prober/alerts/ignored")
-                    .wrap(middleware_manager_auth.clone())
-                    .guard(guard::Put())
-                    .to(routes::manager_prober_alerts_ignored_update),
-            );
+// -- Basic auth middleware --
 
-        // Add MCP services?
-        if let Some(mcp_services) = mcp_services.clone() {
-            app = app.service(
-                web::scope("/mcp").service(web::scope("/probes").service(mcp_services.0.scope())),
-            );
+async fn basic_auth_reporter(request: Request, next: Next) -> Result<Response, StatusCode> {
+    basic_auth_check(request, next, &APP_CONF.server.reporter_token).await
+}
+
+async fn basic_auth_manager(request: Request, next: Next) -> Result<Response, StatusCode> {
+    basic_auth_check(request, next, &APP_CONF.server.manager_token).await
+}
+
+async fn basic_auth_check(
+    request: Request,
+    next: Next,
+    expected_token: &str,
+) -> Result<Response, StatusCode> {
+    let auth_header = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Basic "));
+
+    if let Some(encoded) = auth_header {
+        // Decode base64 basic auth
+        if let Ok(decoded) = base64_decode(encoded) {
+            // Format is "username:password" — we only care about password
+            if let Some(password) = decoded.split(':').nth(1) {
+                if password == expected_token {
+                    return Ok(next.run(request).await);
+                }
+            }
+        }
+    }
+
+    // Unauthorized — return 403 with WWW-Authenticate challenge
+    Ok(Response::builder()
+        .status(StatusCode::FORBIDDEN)
+        .header(
+            header::WWW_AUTHENTICATE,
+            "Basic realm=\"Authentication Required\"",
+        )
+        .body(Body::empty())
+        .unwrap())
+}
+
+// ponytail: no base64 crate needed, basic auth decode is trivial
+fn base64_decode(input: &str) -> Result<String, ()> {
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut output = Vec::new();
+    let bytes: Vec<u8> = input.bytes().filter(|&b| b != b'=').collect();
+
+    for chunk in bytes.chunks(4) {
+        if chunk.len() < 2 {
+            return Err(());
         }
 
-        app
-    })
-    .workers(APP_CONF.server.workers)
-    .bind(APP_CONF.server.inet)
-    .unwrap()
-    .run();
+        let mut buf = 0u32;
+        for (i, &byte) in chunk.iter().enumerate() {
+            let idx = CHARS.iter().position(|&c| c == byte).ok_or(())?;
+            buf |= (idx as u32) << (6 * (3 - i));
+        }
 
-    runtime.block_on(server).unwrap()
-}
-
-fn authenticate(
-    request: ServiceRequest,
-    credentials: BasicAuth,
-    token: &str,
-) -> Result<ServiceRequest, (ActixError, ServiceRequest)> {
-    let password = if let Some(password) = credentials.password() {
-        &*password
-    } else {
-        ""
-    };
-
-    if password == token {
-        Ok(request)
-    } else {
-        let mut error = AuthenticationError::from(
-            request
-                .app_data::<ConfigAuth>()
-                .map(|data| data.clone())
-                .unwrap_or_else(ConfigAuth::default),
-        );
-
-        *error.status_code_mut() = actix_web::http::StatusCode::FORBIDDEN;
-
-        Err((error.into(), request))
+        output.push((buf >> 16) as u8);
+        if chunk.len() > 2 {
+            output.push((buf >> 8) as u8);
+        }
+        if chunk.len() > 3 {
+            output.push(buf as u8);
+        }
     }
-}
 
-async fn authenticate_reporter(
-    request: ServiceRequest,
-    credentials: BasicAuth,
-) -> Result<ServiceRequest, (ActixError, ServiceRequest)> {
-    authenticate(request, credentials, &APP_CONF.server.reporter_token)
-}
-
-async fn authenticate_manager(
-    request: ServiceRequest,
-    credentials: BasicAuth,
-) -> Result<ServiceRequest, (ActixError, ServiceRequest)> {
-    authenticate(request, credentials, &APP_CONF.server.manager_token)
+    String::from_utf8(output).map_err(|_| ())
 }

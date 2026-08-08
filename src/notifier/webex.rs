@@ -5,6 +5,7 @@
 // Copyright: 2022, Timmy O'Tool https://github.com/TimmyOtool
 // License: Mozilla Public License v2.0 (MPL v2.0)
 
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use reqwest::blocking::Client;
@@ -13,13 +14,11 @@ use super::generic::{GenericNotifier, Notification, DISPATCH_TIMEOUT_SECONDS};
 use crate::config::config::ConfigNotify;
 use crate::APP_CONF;
 
-lazy_static! {
-    static ref WEBEX_HTTP_CLIENT: Client = Client::builder()
-        .timeout(Duration::from_secs(DISPATCH_TIMEOUT_SECONDS))
-        .gzip(true)
-        .build()
-        .unwrap();
-}
+static WEBEX_HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| Client::builder()
+    .timeout(Duration::from_secs(DISPATCH_TIMEOUT_SECONDS))
+    .gzip(true)
+    .build()
+    .unwrap());
 
 pub struct WebExNotifier;
 

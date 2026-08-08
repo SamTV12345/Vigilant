@@ -7,8 +7,6 @@
 #[macro_use]
 extern crate log;
 #[macro_use]
-extern crate lazy_static;
-#[macro_use]
 extern crate serde_derive;
 
 mod aggregator;
@@ -19,6 +17,7 @@ mod responder;
 
 use std::ops::Deref;
 use std::str::FromStr;
+use std::sync::LazyLock;
 use std::thread;
 use std::time::Duration;
 
@@ -73,10 +72,8 @@ macro_rules! gen_spawn_managed {
     };
 }
 
-lazy_static! {
-    static ref APP_ARGS: AppArgs = make_app_args();
-    static ref APP_CONF: Config = ConfigReader::make();
-}
+static APP_ARGS: LazyLock<AppArgs> = LazyLock::new(|| make_app_args());
+static APP_CONF: LazyLock<Config> = LazyLock::new(|| ConfigReader::make());
 
 gen_spawn_managed!(
     "prober-poll",
@@ -143,7 +140,7 @@ fn ensure_states() {
 fn main() {
     // Ensure OpenSSL root chain is found on current environment
     unsafe {
-        openssl_probe::init_openssl_env_vars();
+        openssl_probe::try_init_openssl_env_vars();
     }
 
     // Initialize shared logger

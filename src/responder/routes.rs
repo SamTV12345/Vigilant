@@ -4,8 +4,13 @@
 // Copyright: 2021, Valerian Saliou <valerian@valeriansaliou.name>
 // License: Mozilla Public License v2.0 (MPL v2.0)
 
-use actix_files::NamedFile;
-use actix_web::{get, web, web::Data, web::Json, HttpResponse, Responder, Result};
+use axum::{
+    body::Body,
+    extract::{Path, State},
+    http::{header, StatusCode},
+    response::{Html, IntoResponse, Json, Response},
+};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tera::Tera;
 use time;
@@ -30,9 +35,11 @@ use crate::prober::report::{
 use crate::prober::status::Status;
 use crate::APP_CONF;
 
-#[get("/")]
-async fn index(tera: Data<Tera>) -> HttpResponse {
-    // Notice acquire lock in a block to release it ASAP (ie. before template renders)
+pub type AppState = Arc<Tera>;
+
+// -- Public routes --
+
+pub async fn index(State(tera): State<AppState>) -> impl IntoResponse {
     let context = {
         IndexContext {
             states: &PROBER_STORE.read().unwrap().states,
@@ -41,164 +48,93 @@ async fn index(tera: Data<Tera>) -> HttpResponse {
             config: &*INDEX_CONFIG,
         }
     };
-    let render = tera.render(
-        "index.tera",
-        &tera::Context::from_serialize(context).unwrap(),
-    );
-    if let Ok(s) = render {
-        HttpResponse::Ok().content_type("text/html").body(s)
-    } else {
-        HttpResponse::InternalServerError().body(format!("Template Error {:?}", render))
+    match tera.render("index.tera", &tera::Context::from_serialize(&context).unwrap()) {
+        Ok(s) => Html(s).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Template Error {:?}", e)).into_response(),
     }
 }
 
-#[get("/robots.txt")]
-async fn robots() -> Option<NamedFile> {
-    NamedFile::open(APP_CONF.assets.path.join("public").join("robots.txt")).ok()
-}
-
-#[get("/status/text")]
-async fn status_text() -> &'static str {
-    &PROBER_STORE.read().unwrap().states.status.as_str()
-}
-
-#[get("/status/report")]
-async fn status_report() -> Result<impl Responder> {
-    Ok(web::Json(StatusReportResponsePayload::build()))
-}
-
-#[get("/badge/{kind}")]
-async fn badge(kind: web::Path<String>) -> Option<NamedFile> {
-    // Notice acquire lock in a block to release it ASAP (ie. before OS access to file)
-    let status = { &PROBER_STORE.read().unwrap().states.status.as_str() };
-
-    if let Ok(badge_file) = NamedFile::open(
-        APP_CONF
-            .assets
-            .path
-            .join("images")
-            .join("badges")
-            .join(format!("{}-{}-default.svg", kind, status)),
-    ) {
-        // Return badge file without 'Last-Modified' HTTP header, which would otherwise hold the \
-        //   date the actual badge image file was last modified, which is not what we want there, \
-        //   as it would make browsers believe they can use a previous cache they hold, on a \
-        //   badge image that can be for a different status.
-        Some(
-            badge_file
-                .disable_content_disposition()
-                .use_last_modified(false),
-        )
-    } else {
-        None
+pub async fn robots() -> impl IntoResponse {
+    match tokio::fs::read(APP_CONF.assets.path.join("public").join("robots.txt")).await {
+        Ok(contents) => Response::builder()
+            .header(header::CONTENT_TYPE, "text/plain")
+            .body(Body::from(contents))
+            .unwrap(),
+        Err(_) => StatusCode::NOT_FOUND.into_response(),
     }
 }
 
-#[get("/assets/fonts/{folder}/{file}")]
-async fn assets_fonts(path: web::Path<(String, String)>) -> Option<NamedFile> {
-    // Read path information
-    let info = path.into_inner();
-
-    let (folder, file) = (info.0, info.1);
-
-    NamedFile::open(APP_CONF.assets.path.join("fonts").join(folder).join(file)).ok()
+pub async fn status_text() -> impl IntoResponse {
+    PROBER_STORE.read().unwrap().states.status.as_str().to_owned()
 }
 
-#[get("/assets/images/{folder}/{file}")]
-async fn assets_images(path: web::Path<(String, String)>) -> Option<NamedFile> {
-    // Read path information
-    let info = path.into_inner();
-
-    let (folder, file) = (info.0, info.1);
-
-    NamedFile::open(APP_CONF.assets.path.join("images").join(folder).join(file)).ok()
+pub async fn status_report() -> impl IntoResponse {
+    Json(StatusReportResponsePayload::build())
 }
 
-#[get("/assets/stylesheets/{file}")]
-async fn assets_stylesheets(file: web::Path<String>) -> Option<NamedFile> {
-    NamedFile::open(
-        APP_CONF
-            .assets
-            .path
-            .join("stylesheets")
-            .join(file.into_inner()),
-    )
-    .ok()
+pub async fn badge(Path(kind): Path<String>) -> impl IntoResponse {
+    let status = { PROBER_STORE.read().unwrap().states.status.as_str().to_owned() };
+    let path = APP_CONF
+        .assets
+        .path
+        .join("images")
+        .join("badges")
+        .join(format!("{}-{}-default.svg", kind, status));
+
+    match tokio::fs::read(&path).await {
+        Ok(contents) => Response::builder()
+            .header(header::CONTENT_TYPE, "image/svg+xml")
+            .body(Body::from(contents))
+            .unwrap(),
+        Err(_) => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
-#[get("/assets/javascripts/{file}")]
-async fn assets_javascripts(file: web::Path<String>) -> Option<NamedFile> {
-    let file = file.into_inner();
-    NamedFile::open(APP_CONF.assets.path.join("javascripts").join(file)).ok()
-}
+// -- Reporter routes (authenticated externally) --
 
-// Notice: reporter report route is managed in manager due to authentication needs
 pub async fn reporter_report(
-    path: web::Path<(String, String)>,
-    data: Json<ReporterRequestPayload>,
-) -> HttpResponse {
-    // Read path information
-    let info = path.into_inner();
-
-    let (probe_id, node_id) = (info.0, info.1);
-
+    Path((probe_id, node_id)): Path<(String, String)>,
+    Json(data): Json<ReporterRequestPayload>,
+) -> impl IntoResponse {
     debug!("reporter report: {}:{}", probe_id, node_id);
 
-    // Route report to handler (depending on its contents)
     if let Some(ref load) = data.load {
-        // Load reports should come for 'push' nodes only
-        match handle_load_report(
-            &probe_id,
-            &node_id,
-            &data.replica,
-            data.interval,
-            load.cpu,
-            load.ram,
-        ) {
+        match handle_load_report(&probe_id, &node_id, &data.replica, data.interval, load.cpu, load.ram) {
             Ok(forward) => {
-                // Trigger a plugins check
                 run_dispatch_plugins(&probe_id, &node_id, forward);
-
-                HttpResponse::Ok().finish()
+                StatusCode::OK
             }
-            Err(HandleLoadError::InvalidLoad) => HttpResponse::BadRequest().finish(),
-            Err(HandleLoadError::WrongMode) => HttpResponse::PreconditionFailed().finish(),
-            Err(HandleLoadError::NotFound) => HttpResponse::NotFound().finish(),
+            Err(HandleLoadError::InvalidLoad) => StatusCode::BAD_REQUEST,
+            Err(HandleLoadError::WrongMode) => StatusCode::PRECONDITION_FAILED,
+            Err(HandleLoadError::NotFound) => StatusCode::NOT_FOUND,
         }
     } else if let Some(ref health) = data.health {
-        // Health reports should come for 'local' nodes only
         match handle_health_report(&probe_id, &node_id, &data.replica, data.interval, health) {
-            Ok(_) => HttpResponse::Ok().finish(),
-            Err(HandleHealthError::WrongMode) => HttpResponse::PreconditionFailed().finish(),
-            Err(HandleHealthError::NotFound) => HttpResponse::NotFound().finish(),
+            Ok(_) => StatusCode::OK,
+            Err(HandleHealthError::WrongMode) => StatusCode::PRECONDITION_FAILED,
+            Err(HandleHealthError::NotFound) => StatusCode::NOT_FOUND,
         }
     } else {
-        // Report contents is invalid
-        HttpResponse::BadRequest().finish()
+        StatusCode::BAD_REQUEST
     }
 }
 
-// Notice: reporter flush route is managed in manager due to authentication needs
-pub async fn reporter_flush(path: web::Path<(String, String, String)>) -> HttpResponse {
-    // Read path information
-    let info = path.into_inner();
-
-    let (probe_id, node_id, replica_id) = (info.0, info.1, info.2);
-
+pub async fn reporter_flush(
+    Path((probe_id, node_id, replica_id)): Path<(String, String, String)>,
+) -> impl IntoResponse {
     debug!("reporter flush: {}:{}:{}", probe_id, node_id, replica_id);
 
-    // Flush reports should come for 'push' and 'local' nodes only
     match handle_flush_report(&probe_id, &node_id, &replica_id) {
-        Ok(()) => HttpResponse::Ok().finish(),
-        Err(HandleFlushError::WrongMode) => HttpResponse::PreconditionFailed().finish(),
-        Err(HandleFlushError::NotFound) => HttpResponse::NotFound().finish(),
+        Ok(()) => StatusCode::OK,
+        Err(HandleFlushError::WrongMode) => StatusCode::PRECONDITION_FAILED,
+        Err(HandleFlushError::NotFound) => StatusCode::NOT_FOUND,
     }
 }
 
-// Notice: manager announcements route is managed in manager due to authentication needs
-pub async fn manager_announcements() -> HttpResponse {
-    // List all announcements in store
-    HttpResponse::Ok().json(
+// -- Manager routes (authenticated externally) --
+
+pub async fn manager_announcements() -> impl IntoResponse {
+    Json(
         ANNOUNCEMENTS_STORE
             .read()
             .unwrap()
@@ -212,22 +148,17 @@ pub async fn manager_announcements() -> HttpResponse {
     )
 }
 
-// Notice: manager announcement insert route is managed in manager due to authentication needs
 pub async fn manager_announcement_insert(
-    data: Json<ManagerAnnouncementInsertRequestPayload>,
-) -> HttpResponse {
-    // Validate data
+    Json(data): Json<ManagerAnnouncementInsertRequestPayload>,
+) -> impl IntoResponse {
     if data.title.len() > 0 && data.text.len() > 0 {
-        // Generate unique identifier and insert in announcements
         let id = Uuid::new_v4().hyphenated().to_string();
 
         let mut store = ANNOUNCEMENTS_STORE.write().unwrap();
-
         store.announcements.push(Announcement {
             id: id.to_owned(),
             title: data.title.to_owned(),
             text: data.text.to_owned(),
-
             date: Some(
                 time::OffsetDateTime::now_utc()
                     .format(&ANNOUNCEMENTS_DATE_NOW_FORMATTER)
@@ -235,45 +166,35 @@ pub async fn manager_announcement_insert(
             ),
         });
 
-        HttpResponse::Ok().json(ManagerAnnouncementInsertResponsePayload { id: id })
+        Json(ManagerAnnouncementInsertResponsePayload { id }).into_response()
     } else {
-        // Announcement data is invalid
-        HttpResponse::BadRequest().finish()
+        StatusCode::BAD_REQUEST.into_response()
     }
 }
 
-// Notice: manager announcement retract route is managed in manager due to authentication needs
-pub async fn manager_announcement_retract(announcement_id: web::Path<String>) -> HttpResponse {
-    let announcement_id = announcement_id.into_inner();
+pub async fn manager_announcement_retract(Path(announcement_id): Path<String>) -> impl IntoResponse {
     let mut store = ANNOUNCEMENTS_STORE.write().unwrap();
 
-    // Find announcement index (if it exists)
     let announcement_index = store
         .announcements
         .iter()
         .position(|announcement| announcement.id == announcement_id);
 
     if let Some(announcement_index) = announcement_index {
-        // Remove target announcement
         store.announcements.remove(announcement_index);
-
-        HttpResponse::Ok().finish()
+        StatusCode::OK.into_response()
     } else {
-        HttpResponse::NotFound().finish()
+        StatusCode::NOT_FOUND.into_response()
     }
 }
 
-// Notice: manager prober alerts route is managed in manager due to authentication needs
-pub async fn manager_prober_alerts() -> HttpResponse {
+pub async fn manager_prober_alerts() -> impl IntoResponse {
     let mut alerts = ManagerProberAlertsResponsePayload::default();
-
-    // Classify probes with a non-healthy status
     let probes = &PROBER_STORE.read().unwrap().states.probes;
 
     for (probe_id, probe) in probes.iter() {
         for (node_id, node) in probe.nodes.iter() {
             for (replica_id, replica) in node.replicas.iter() {
-                // Replica is either sick or dead, append to alerts
                 if replica.status == Status::Sick || replica.status == Status::Dead {
                     let alert_entry = ManagerProberAlertsResponsePayloadEntry {
                         probe: probe_id.to_owned(),
@@ -291,15 +212,12 @@ pub async fn manager_prober_alerts() -> HttpResponse {
         }
     }
 
-    HttpResponse::Ok().json(alerts)
+    Json(alerts)
 }
 
-// Notice: manager prober alerts ignored resolve route is managed in manager due to authentication \
-//   needs
-pub async fn manager_prober_alerts_ignored_resolve() -> HttpResponse {
+pub async fn manager_prober_alerts_ignored_resolve() -> impl IntoResponse {
     let states = &PROBER_STORE.read().unwrap().states;
 
-    // Calculate remaining ignore reminders seconds (if any set or if time is still left)
     let reminders_seconds = states
         .notifier
         .reminder_ignore_until
@@ -308,22 +226,19 @@ pub async fn manager_prober_alerts_ignored_resolve() -> HttpResponse {
         })
         .map(|reminder_ignore_duration_since| reminder_ignore_duration_since.as_secs() as u16);
 
-    HttpResponse::Ok().json(ManagerProberAlertsIgnoredResolveResponsePayload {
-        reminders_seconds: reminders_seconds,
+    Json(ManagerProberAlertsIgnoredResolveResponsePayload {
+        reminders_seconds,
     })
 }
 
-// Notice: manager prober alerts ignored update route is managed in manager due to authentication \
-//   needs
 pub async fn manager_prober_alerts_ignored_update(
-    data: Json<ManagerProberAlertsIgnoredResolveRequestPayload>,
-) -> HttpResponse {
+    Json(data): Json<ManagerProberAlertsIgnoredResolveRequestPayload>,
+) -> impl IntoResponse {
     let mut store = PROBER_STORE.write().unwrap();
 
-    // Assign reminder ignore intil date (re-map from seconds to date time if set)
     store.states.notifier.reminder_ignore_until = data
         .reminders_seconds
         .map(|reminders_seconds| SystemTime::now() + Duration::from_secs(reminders_seconds as _));
 
-    HttpResponse::Ok().finish()
+    StatusCode::OK
 }

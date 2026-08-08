@@ -5,6 +5,7 @@
 // License: Mozilla Public License v2.0 (MPL v2.0)
 
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use reqwest::blocking::Client;
@@ -17,13 +18,11 @@ static TEXT_MESSAGE_TRUNCATED_INDICATOR: &'static str = "[..]";
 
 const TEXT_MESSAGE_MAXIMUM_LENGTH: usize = 1000;
 
-lazy_static! {
-    static ref TWILIO_HTTP_CLIENT: Client = Client::builder()
-        .timeout(Duration::from_secs(DISPATCH_TIMEOUT_SECONDS))
-        .gzip(true)
-        .build()
-        .unwrap();
-}
+static TWILIO_HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| Client::builder()
+    .timeout(Duration::from_secs(DISPATCH_TIMEOUT_SECONDS))
+    .gzip(true)
+    .build()
+    .unwrap());
 
 pub struct TwilioNotifier;
 

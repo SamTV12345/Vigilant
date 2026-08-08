@@ -6,6 +6,7 @@
 
 use std::cmp::min;
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
+use std::sync::LazyLock;
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::thread;
@@ -13,7 +14,7 @@ use std::time::{Duration, SystemTime};
 use time;
 
 use indexmap::IndexMap;
-use ping::ping;
+use ping::Ping;
 use reqwest::blocking::Client;
 use reqwest::header::{HeaderMap, USER_AGENT};
 use reqwest::redirect::Policy as RedirectPolicy;
@@ -38,8 +39,8 @@ use crate::APP_CONF;
 const PROBE_ICMP_TIMEOUT_SECONDS: u64 = 1;
 const SECOND_TO_MILLISECONDS: u32 = 1000;
 
-lazy_static! {
-    pub static ref STORE: Arc<RwLock<Store>> = Arc::new(RwLock::new(Store {
+pub static STORE: LazyLock<Arc<RwLock<Store>>> = LazyLock::new(|| {
+    Arc::new(RwLock::new(Store {
         states: ServiceStates {
             status: Status::Healthy,
             date: None,
@@ -47,19 +48,21 @@ lazy_static! {
             notifier: ServiceStatesNotifier {
                 reminder_escalate_counter: 0,
                 reminder_backoff_counter: 1,
-                reminder_ignore_until: None
-            }
+                reminder_ignore_until: None,
+            },
         },
         notified: None,
-    }));
-    static ref PROBE_HTTP_CLIENT: Client = Client::builder()
+    }))
+});
+static PROBE_HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| {
+    Client::builder()
         .timeout(Duration::from_secs(APP_CONF.metrics.poll_delay_dead))
         .gzip(false)
         .redirect(RedirectPolicy::none())
         .default_headers(make_default_headers())
         .build()
-        .unwrap();
-}
+        .unwrap()
+});
 
 #[derive(Deserialize)]
 struct RabbitMQAPIQueueResponse {
@@ -302,7 +305,7 @@ fn proceed_replica_probe_poll_icmp(host: &str) -> (bool, Option<Duration>) {
                     let ping_start_time = SystemTime::now();
 
                     // Ping target IP address
-                    match ping(address_ip, Some(pinger_timeout), None, None, None, None) {
+                    match Ping::new(address_ip).timeout(pinger_timeout).send() {
                         Ok(_) => {
                             debug!(
                                 "got prober poll response for icmp target: {} from host: {}",

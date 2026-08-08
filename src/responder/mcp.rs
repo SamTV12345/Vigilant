@@ -20,6 +20,7 @@ pub struct ProbesRequest {}
 
 #[derive(Clone)]
 pub struct Probes {
+    #[allow(dead_code)]
     tool_router: ToolRouter<Self>,
 }
 
@@ -45,10 +46,7 @@ impl Probes {
 #[tool_handler]
 impl ServerHandler for Probes {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: Some("Vigil MCP Server. Use this server to get the status report of all Vigil Status Page services and nodes.".into()),
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            ..Default::default()
-        }
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_instructions("Vigil MCP Server. Use this server to get the status report of all Vigil Status Page services and nodes.")
     }
 }

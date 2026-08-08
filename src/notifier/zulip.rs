@@ -5,6 +5,7 @@
 // Copyright: 2021, Bastien Orivel <eijebong@bananium.fr>
 // License: Mozilla Public License v2.0 (MPL v2.0)
 
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use reqwest::blocking::Client;
@@ -14,13 +15,11 @@ use crate::config::config::ConfigNotify;
 use crate::prober::status::Status;
 use crate::APP_CONF;
 
-lazy_static! {
-    static ref ZULIP_HTTP_CLIENT: Client = Client::builder()
-        .timeout(Duration::from_secs(DISPATCH_TIMEOUT_SECONDS))
-        .gzip(true)
-        .build()
-        .unwrap();
-}
+static ZULIP_HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| Client::builder()
+    .timeout(Duration::from_secs(DISPATCH_TIMEOUT_SECONDS))
+    .gzip(true)
+    .build()
+    .unwrap());
 
 pub struct ZulipNotifier;
 
