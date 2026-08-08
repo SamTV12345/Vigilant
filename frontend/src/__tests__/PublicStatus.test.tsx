@@ -1,19 +1,22 @@
+/// <reference types="@vitest/browser" />
+
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import PublicStatus from '../pages/PublicStatus'
+import type { PublicMonitor, DailyUptime, Incident, StatusResponse } from '../api'
 
 // -- Mock API hooks --
 const { mockUseStatus, mockUseDailyUptime, mockUseIncidents } = vi.hoisted(() => ({
-  mockUseStatus: vi.fn(() => ({
+  mockUseStatus: vi.fn((): { data: StatusResponse; isLoading: boolean; isError: boolean } => ({
     data: { status: 'healthy', monitors: [] },
     isLoading: false, isError: false,
   })),
-  mockUseDailyUptime: vi.fn(() => ({
+  mockUseDailyUptime: vi.fn((_id?: string): { data: DailyUptime[]; isLoading: boolean; isError: boolean } => ({
     data: [],
     isLoading: false,
     isError: false,
   })),
-  mockUseIncidents: vi.fn(() => ({
+  mockUseIncidents: vi.fn((): { data: Incident[]; isLoading: boolean; isError: boolean } => ({
     data: [],
     isLoading: false,
     isError: false,
@@ -27,17 +30,17 @@ vi.mock('../api', () => ({
 }))
 
 // -- Default mock data --
-const healthyMonitors = [
+const healthyMonitors: PublicMonitor[] = [
   { id: '1', name: 'API', type: 'http', url: 'https://api.example.com', status: 'healthy', active: true },
   { id: '2', name: 'Website', type: 'http', url: 'https://example.com', status: 'healthy', active: true },
   { id: '3', name: 'Database', type: 'tcp', url: 'db.internal:5432', status: 'healthy', active: true },
 ]
-const deadMonitors = [
+const deadMonitors: PublicMonitor[] = [
   healthyMonitors[0],
   { ...healthyMonitors[1], status: 'dead' },
   healthyMonitors[2],
 ]
-const sickMonitors = [
+const sickMonitors: PublicMonitor[] = [
   healthyMonitors[0],
   { ...healthyMonitors[1], status: 'sick' },
   healthyMonitors[2],
