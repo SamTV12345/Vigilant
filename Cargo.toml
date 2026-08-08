@@ -1,15 +1,15 @@
 [package]
 name = "vigil-server"
 version = "1.29.0"
-description = "Microservices Status Page. Monitors a distributed infrastructure and sends alerts (Slack, SMS, etc.)."
+description = "Microservices Status Page. Monitors a distributed infrastructure and sends alerts (Slack, SMS, etc.). Fork of Vigil by Valerian Saliou."
 readme = "README.md"
 license = "MPL-2.0"
 edition = "2024"
-homepage = "https://github.com/valeriansaliou/vigil"
-repository = "https://github.com/valeriansaliou/vigil.git"
+homepage = "https://github.com/SamTV12345/Vigilant"
+repository = "https://github.com/SamTV12345/Vigilant.git"
 keywords = ["microservices", "infrastructure", "status", "monitor", "slack"]
 categories = ["web-programming"]
-authors = ["Valerian Saliou <valerian@valeriansaliou.name>"]
+authors = ["SamTV12345", "Valerian Saliou <valerian@valeriansaliou.name>"]
 exclude = ["dev/*"]
 
 [[bin]]
