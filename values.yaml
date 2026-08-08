@@ -2,4 +2,4 @@
 # Updated automatically after every successful image push.
 image:
   repository: ghcr.io/samtv12345/vigilant
-  tag: "sha256:9e2de5a752fd0ba8e6f89189faf5c49fe2f710ab6787a8e473077a3983b459ee"
+  digest: "sha256:9e2de5a752fd0ba8e6f89189faf5c49fe2f710ab6787a8e473077a3983b459ee"
