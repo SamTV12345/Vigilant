@@ -1,3 +1,10 @@
-target/*
-!target/release/vigilant
-.cargo
+target/
+.git/
+.github/
+frontend/node_modules/
+frontend/dist/
+*.db
+*.pdb
+*.exe
+dev/
+debian/

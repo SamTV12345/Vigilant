@@ -39,7 +39,6 @@ native-tls = { version = "0.2", features = ["vendored"] }
 openssl-probe = "0.2"
 reqwest = { version = "0.13", features = ["native-tls-vendored", "gzip", "blocking", "json", "multipart", "form"], default-features = false }
 ping = "0.9"
-ssh2 = "0.9"
 run_script = "0.11"
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "postgres", "migrate", "chrono"] }
 socketioxide = { version = "0.15", features = ["tracing"] }

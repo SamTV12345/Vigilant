@@ -1,17 +1,22 @@
-FROM debian:bookworm-slim
+# -- Build stage: static musl binary --
+FROM blackdex/rust-musl:x86_64-musl AS builder
 
 WORKDIR /app
+COPY . .
 
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN cargo build --release
 
-COPY target/release/vigilant /usr/local/bin/vigilant
+# -- Final stage: scratch with CA certs --
+FROM scratch
+
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /app/target/release/vigilant /usr/local/bin/vigilant
 COPY res/ ./res/
 
 ENV DATABASE_URL=sqlite:/app/vigilant.db?mode=rwc
 ENV LISTEN_ADDR=0.0.0.0:8080
 
-USER 1000:1000
-
-CMD ["vigilant"]
+# ICMP probes need NET_RAW; run with --cap-add=NET_RAW or as root
+CMD ["/usr/local/bin/vigilant"]
 
 EXPOSE 8080
