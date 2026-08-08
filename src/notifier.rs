@@ -1,26 +1,16 @@
 // Notifier engine — status transition detection and dispatch
 
 use std::collections::HashMap;
-use std::sync::LazyLock;
 use std::time::Duration;
 
 use lettre::message::Mailbox;
 use lettre::{Message, SmtpTransport, Transport};
 use log::{debug, error, info, warn};
-use reqwest::blocking::Client;
 use serde::Serialize;
 use serde_json::Value;
 use sqlx::SqlitePool;
 
 use crate::db::models::Notification;
-
-static HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| {
-    Client::builder()
-        .timeout(Duration::from_secs(10))
-        .gzip(true)
-        .build()
-        .unwrap()
-});
 
 pub struct NotifierState {
     pool: SqlitePool,
@@ -35,23 +25,21 @@ impl NotifierState {
         }
     }
 
-    /// Called after each probe result. Returns true if status transitioned.
+    /// Called after each probe result when status transitioned.
+    /// `db_current_status` is the status the monitor had in the DB before this probe,
+    /// used as fallback when this is the first probe seen by this notifier instance.
     pub async fn check_and_notify(
         &mut self,
         monitor_id: &str,
         monitor_name: &str,
+        db_current_status: &str,
         new_status: &str,
     ) {
-        let old = self.last_known.get(monitor_id).cloned();
-
-        // First probe for this monitor — track but don't notify
-        if old.is_none() {
-            self.last_known
-                .insert(monitor_id.to_string(), new_status.to_string());
-            return;
-        }
-
-        let old_status = old.unwrap();
+        let old_status = self
+            .last_known
+            .get(monitor_id)
+            .cloned()
+            .unwrap_or_else(|| db_current_status.to_string());
         if old_status == new_status {
             return;
         }
@@ -80,41 +68,49 @@ impl NotifierState {
             return;
         }
 
-        // Dispatch to each channel
+        // Dispatch each notification in its own OS thread to avoid
+        // reqwest::blocking's internal tokio runtime from conflicting
+        // with our async runtime.
         for notify in &active {
-            self.dispatch(notify, monitor_name, &old_status, new_status);
+            let monitor_name = monitor_name.to_string();
+            let old_status = old_status.clone();
+            let new_status = new_status.to_string();
+            let config_str = notify.config.clone();
+            let type_ = notify.type_.clone();
+            let notify_id = notify.id.clone();
+            std::thread::spawn(move || {
+                let config: Value = match serde_json::from_str(&config_str) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        warn!("invalid config for notification {notify_id}: {e}");
+                        return;
+                    }
+                };
+
+                match type_.as_str() {
+                    "webhook" => send_webhook(&config, &monitor_name, &old_status, &new_status),
+                    "slack" => send_slack(&config, &monitor_name, &old_status, &new_status),
+                    "email" => send_email(&config, &monitor_name, &old_status, &new_status),
+                    "telegram" => send_telegram(&config, &monitor_name, &old_status, &new_status),
+                    "twilio" => send_twilio(&config, &monitor_name, &old_status, &new_status),
+                    "pushover" => send_pushover(&config, &monitor_name, &old_status, &new_status),
+                    "gotify" => send_gotify(&config, &monitor_name, &old_status, &new_status),
+                    "zulip" => send_zulip(&config, &monitor_name, &old_status, &new_status),
+                    "matrix" => send_matrix(&config, &monitor_name, &old_status, &new_status),
+                    "webex" => send_webex(&config, &monitor_name, &old_status, &new_status),
+                    _ => warn!("unknown notifier type '{type_}'"),
+                }
+            });
         }
     }
+}
 
-    fn dispatch(
-        &self,
-        notify: &Notification,
-        monitor_name: &str,
-        old_status: &str,
-        new_status: &str,
-    ) {
-        let config: Value = match serde_json::from_str(&notify.config) {
-            Ok(c) => c,
-            Err(e) => {
-                warn!("invalid config for notification {}: {e}", notify.id);
-                return;
-            }
-        };
-
-        match notify.type_.as_str() {
-            "webhook" => send_webhook(&config, monitor_name, old_status, new_status),
-            "slack" => send_slack(&config, monitor_name, old_status, new_status),
-            "email" => send_email(&config, monitor_name, old_status, new_status),
-            "telegram" => send_telegram(&config, monitor_name, old_status, new_status),
-            "twilio" => send_twilio(&config, monitor_name, old_status, new_status),
-            "pushover" => send_pushover(&config, monitor_name, old_status, new_status),
-            "gotify" => send_gotify(&config, monitor_name, old_status, new_status),
-            "zulip" => send_zulip(&config, monitor_name, old_status, new_status),
-            "matrix" => send_matrix(&config, monitor_name, old_status, new_status),
-            "webex" => send_webex(&config, monitor_name, old_status, new_status),
-            _ => warn!("unknown notifier type '{}'", notify.type_),
-        }
-    }
+fn http_client() -> reqwest::blocking::Client {
+    reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .gzip(true)
+        .build()
+        .expect("build http client")
 }
 
 fn slack_color(status: &str) -> &str {
@@ -171,7 +167,7 @@ fn send_webhook(config: &Value, monitor_name: &str, old_status: &str, new_status
         time: chrono::Utc::now().to_rfc3339(),
     };
 
-    match HTTP_CLIENT.post(hook_url).json(&payload).send() {
+    match http_client().post(hook_url).json(&payload).send() {
         Ok(resp) if resp.status().is_success() => {
             info!("webhook sent for {monitor_name}: {old_status} -> {new_status}");
         }
@@ -248,7 +244,7 @@ fn send_slack(config: &Value, monitor_name: &str, old_status: &str, new_status: 
         }],
     };
 
-    match HTTP_CLIENT.post(hook_url).json(&payload).send() {
+    match http_client().post(hook_url).json(&payload).send() {
         Ok(resp) if resp.status().is_success() => info!("slack sent for {monitor_name}"),
         Ok(resp) => warn!("slack failed for {monitor_name}: HTTP {}", resp.status()),
         Err(e) => error!("slack error for {monitor_name}: {e}"),
@@ -344,7 +340,7 @@ fn send_telegram(config: &Value, monitor_name: &str, old_status: &str, new_statu
     let payload = serde_json::json!({"chat_id": chat_id, "text": text, "parse_mode": "HTML"});
 
     let url = format!("https://api.telegram.org/bot{token}/sendMessage");
-    match HTTP_CLIENT.post(&url).json(&payload).send() {
+    match http_client().post(&url).json(&payload).send() {
         Ok(resp) if resp.status().is_success() => info!("telegram sent for {monitor_name}"),
         Ok(resp) => warn!("telegram failed for {monitor_name}: HTTP {}", resp.status()),
         Err(e) => error!("telegram error for {monitor_name}: {e}"),
@@ -375,7 +371,7 @@ fn send_twilio(config: &Value, monitor_name: &str, old_status: &str, new_status:
     let params = [("From", from), ("To", to), ("Body", &body)];
 
     let url = format!("https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json");
-    match HTTP_CLIENT
+    match http_client()
         .post(&url)
         .basic_auth(sid, Some(token))
         .form(&params)
@@ -421,7 +417,7 @@ fn send_pushover(config: &Value, monitor_name: &str, old_status: &str, new_statu
         device,
     };
 
-    match HTTP_CLIENT
+    match http_client()
         .post("https://api.pushover.net/1/messages.json")
         .json(&payload)
         .send()
@@ -452,7 +448,7 @@ fn send_gotify(config: &Value, monitor_name: &str, old_status: &str, new_status:
     });
 
     let url = format!("{server}/message?token={token}");
-    match HTTP_CLIENT.post(&url).json(&payload).send() {
+    match http_client().post(&url).json(&payload).send() {
         Ok(resp) if resp.status().is_success() => info!("gotify sent for {monitor_name}"),
         Ok(resp) => warn!("gotify failed for {monitor_name}: HTTP {}", resp.status()),
         Err(e) => error!("gotify error for {monitor_name}: {e}"),
@@ -490,7 +486,7 @@ fn send_zulip(config: &Value, monitor_name: &str, old_status: &str, new_status: 
     let text = format!("**{monitor_name}** status changed: `{old_status}` → `{new_status}`");
 
     let url = format!("{site}/api/v1/messages");
-    match HTTP_CLIENT
+    match http_client()
         .post(&url)
         .basic_auth(bot_email, Some(api_key))
         .form(&[
@@ -531,7 +527,7 @@ fn send_matrix(config: &Value, monitor_name: &str, old_status: &str, new_status:
 
     let txn = uuid::Uuid::new_v4().to_string();
     let url = format!("{homeserver}/_matrix/client/v3/rooms/{room}/send/m.room.message/{txn}");
-    match HTTP_CLIENT
+    match http_client()
         .put(&url)
         .bearer_auth(token)
         .json(&payload)
@@ -571,7 +567,7 @@ fn send_webex(config: &Value, monitor_name: &str, old_status: &str, new_status: 
         payload["toPersonEmail"] = serde_json::Value::String(email.into());
     }
 
-    match HTTP_CLIENT
+    match http_client()
         .post("https://webexapis.com/v1/messages")
         .bearer_auth(token)
         .json(&payload)

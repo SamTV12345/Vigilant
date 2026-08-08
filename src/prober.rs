@@ -115,7 +115,7 @@ async fn probe_all(pool: SqlitePool, monitors: Vec<Monitor>, notifier: Arc<Mutex
                 notifier
                     .lock()
                     .await
-                    .check_and_notify(&monitor.id, &monitor.name, &status)
+                    .check_and_notify(&monitor.id, &monitor.name, &monitor.current_status, &status)
                     .await;
             }
         });
@@ -148,12 +148,27 @@ async fn probe_one(monitor: &Monitor) -> (String, Option<i64>, Option<i64>, Opti
     }
 }
 
+/// Run a blocking closure on a dedicated OS thread to avoid
+/// reqwest::blocking's internal tokio runtime from panicking on Drop
+/// inside tokio::task::spawn_blocking.
+async fn run_blocking<F, T>(f: F) -> T
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(f());
+    });
+    rx.await.unwrap_or_else(|_| std::process::abort())
+}
+
 async fn probe_http(monitor: &Monitor) -> (bool, bool, Option<i64>, Option<String>) {
     let url = monitor.url.clone();
     let method = monitor.method.clone().unwrap_or_else(|| "GET".into());
     let timeout = monitor.timeout_secs.max(1) as u64;
 
-    tokio::task::spawn_blocking(move || {
+    run_blocking(move || {
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(timeout))
             .gzip(false)
@@ -204,7 +219,6 @@ async fn probe_http(monitor: &Monitor) -> (bool, bool, Option<i64>, Option<Strin
         }
     })
     .await
-    .unwrap_or((false, false, None, Some("task panicked".into())))
 }
 
 async fn probe_tcp(monitor: &Monitor) -> (bool, bool, Option<i64>, Option<String>) {

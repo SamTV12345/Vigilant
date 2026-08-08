@@ -213,6 +213,17 @@ export function useDeleteNotification() {
   })
 }
 
+export function useUpdateNotification() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Notification> }) => {
+      const r = await authFetch(`/api/admin/notifications/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+      return r.json()
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  })
+}
+
 // -- Settings --
 export function useSettings() {
   return useQuery({

@@ -6,6 +6,7 @@ import UptimeChart from '../components/UptimeChart'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
 
 export default function MonitorDetail() {
   const { id } = useParams<{ id: string }>()
@@ -18,6 +19,18 @@ export default function MonitorDetail() {
 
   const pct = uptime?.uptime_percent ?? 100
   const pctColor = pct >= 99 ? 'text-green' : pct >= 95 ? 'text-yellow' : 'text-red'
+
+  const configRows: [string, React.ReactNode][] = [
+    ['Type', <Badge variant="outline" key="type">{monitor.type}</Badge>],
+    ['URL', <code key="url" className="text-xs break-all">{monitor.url}</code>],
+    ['Interval', `${monitor.interval_secs}s`],
+    ['Timeout', `${monitor.timeout_secs}s`],
+    ['Method', monitor.method || '—'],
+    ['Active', monitor.active ? '✅' : '❌'],
+    ['Headers', monitor.headers ? <pre key="headers" className="text-xs font-mono whitespace-pre-wrap max-h-24 overflow-auto">{monitor.headers}</pre> : '—'],
+    ['Body', monitor.body ? <pre key="body" className="text-xs font-mono whitespace-pre-wrap max-h-24 overflow-auto">{monitor.body}</pre> : '—'],
+    ['Script', monitor.script ? <pre key="script" className="text-xs font-mono whitespace-pre-wrap max-h-24 overflow-auto">{monitor.script}</pre> : '—'],
+  ]
 
   return (
     <div>
@@ -51,6 +64,22 @@ export default function MonitorDetail() {
           </CardContent>
         </Card>
       )}
+
+      <Card className="mb-4">
+        <CardHeader>
+          <CardTitle>Configuration</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+            {configRows.map(([label, value]) => (
+              <div key={label} className="flex items-start gap-2 py-1 border-b border-border/40 last:border-0">
+                <span className="text-muted-foreground font-medium shrink-0 w-20">{label}</span>
+                <span className="min-w-0">{value}</span>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="mb-4">
         <CardHeader>
