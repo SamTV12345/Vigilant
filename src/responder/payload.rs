@@ -6,9 +6,9 @@
 
 use rmcp::schemars;
 
+use crate::APP_CONF;
 use crate::prober::manager::STORE as PROBER_STORE;
 use crate::prober::status::Status as HealthStatus;
-use crate::APP_CONF;
 
 #[derive(Deserialize)]
 pub struct ReporterRequestPayload {

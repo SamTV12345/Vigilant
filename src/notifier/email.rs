@@ -12,9 +12,9 @@ use lettre::transport::smtp::client::{Tls, TlsParameters};
 use lettre::transport::smtp::{Error as SmtpError, SmtpTransport};
 use lettre::{Address, Transport};
 
-use super::generic::{GenericNotifier, Notification, DISPATCH_TIMEOUT_SECONDS};
-use crate::config::config::ConfigNotify;
+use super::generic::{DISPATCH_TIMEOUT_SECONDS, GenericNotifier, Notification};
 use crate::APP_CONF;
+use crate::config::config::ConfigNotify;
 
 pub struct EmailNotifier;
 

@@ -7,7 +7,7 @@
 use axum::{
     body::Body,
     extract::{Path, State},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::{Html, IntoResponse, Json, Response},
 };
 use std::sync::Arc;
@@ -20,20 +20,20 @@ use super::announcements::{
     Announcement, DATE_NOW_FORMATTER as ANNOUNCEMENTS_DATE_NOW_FORMATTER,
     STORE as ANNOUNCEMENTS_STORE,
 };
-use super::context::{IndexContext, INDEX_CONFIG, INDEX_ENVIRONMENT};
+use super::context::{INDEX_CONFIG, INDEX_ENVIRONMENT, IndexContext};
 use super::payload::{
     ManagerAnnouncementInsertRequestPayload, ManagerAnnouncementInsertResponsePayload,
     ManagerAnnouncementsResponsePayload, ManagerProberAlertsIgnoredResolveRequestPayload,
     ManagerProberAlertsIgnoredResolveResponsePayload, ManagerProberAlertsResponsePayload,
     ManagerProberAlertsResponsePayloadEntry, ReporterRequestPayload, StatusReportResponsePayload,
 };
-use crate::prober::manager::{run_dispatch_plugins, STORE as PROBER_STORE};
+use crate::APP_CONF;
+use crate::prober::manager::{STORE as PROBER_STORE, run_dispatch_plugins};
 use crate::prober::report::{
-    handle_flush as handle_flush_report, handle_health as handle_health_report,
-    handle_load as handle_load_report, HandleFlushError, HandleHealthError, HandleLoadError,
+    HandleFlushError, HandleHealthError, HandleLoadError, handle_flush as handle_flush_report,
+    handle_health as handle_health_report, handle_load as handle_load_report,
 };
 use crate::prober::status::Status;
-use crate::APP_CONF;
 
 pub type AppState = Arc<Tera>;
 
@@ -48,9 +48,16 @@ pub async fn index(State(tera): State<AppState>) -> impl IntoResponse {
             config: &*INDEX_CONFIG,
         }
     };
-    match tera.render("index.tera", &tera::Context::from_serialize(&context).unwrap()) {
+    match tera.render(
+        "index.tera",
+        &tera::Context::from_serialize(&context).unwrap(),
+    ) {
         Ok(s) => Html(s).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Template Error {:?}", e)).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Template Error {:?}", e),
+        )
+            .into_response(),
     }
 }
 
@@ -65,7 +72,13 @@ pub async fn robots() -> impl IntoResponse {
 }
 
 pub async fn status_text() -> impl IntoResponse {
-    PROBER_STORE.read().unwrap().states.status.as_str().to_owned()
+    PROBER_STORE
+        .read()
+        .unwrap()
+        .states
+        .status
+        .as_str()
+        .to_owned()
 }
 
 pub async fn status_report() -> impl IntoResponse {
@@ -73,7 +86,15 @@ pub async fn status_report() -> impl IntoResponse {
 }
 
 pub async fn badge(Path(kind): Path<String>) -> impl IntoResponse {
-    let status = { PROBER_STORE.read().unwrap().states.status.as_str().to_owned() };
+    let status = {
+        PROBER_STORE
+            .read()
+            .unwrap()
+            .states
+            .status
+            .as_str()
+            .to_owned()
+    };
     let path = APP_CONF
         .assets
         .path
@@ -99,7 +120,14 @@ pub async fn reporter_report(
     debug!("reporter report: {}:{}", probe_id, node_id);
 
     if let Some(ref load) = data.load {
-        match handle_load_report(&probe_id, &node_id, &data.replica, data.interval, load.cpu, load.ram) {
+        match handle_load_report(
+            &probe_id,
+            &node_id,
+            &data.replica,
+            data.interval,
+            load.cpu,
+            load.ram,
+        ) {
             Ok(forward) => {
                 run_dispatch_plugins(&probe_id, &node_id, forward);
                 StatusCode::OK
@@ -172,7 +200,9 @@ pub async fn manager_announcement_insert(
     }
 }
 
-pub async fn manager_announcement_retract(Path(announcement_id): Path<String>) -> impl IntoResponse {
+pub async fn manager_announcement_retract(
+    Path(announcement_id): Path<String>,
+) -> impl IntoResponse {
     let mut store = ANNOUNCEMENTS_STORE.write().unwrap();
 
     let announcement_index = store
@@ -226,9 +256,7 @@ pub async fn manager_prober_alerts_ignored_resolve() -> impl IntoResponse {
         })
         .map(|reminder_ignore_duration_since| reminder_ignore_duration_since.as_secs() as u16);
 
-    Json(ManagerProberAlertsIgnoredResolveResponsePayload {
-        reminders_seconds,
-    })
+    Json(ManagerProberAlertsIgnoredResolveResponsePayload { reminders_seconds })
 }
 
 pub async fn manager_prober_alerts_ignored_update(

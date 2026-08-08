@@ -5,17 +5,16 @@
 // License: Mozilla Public License v2.0 (MPL v2.0)
 
 use axum::{
+    Router,
     body::Body,
     extract::Request,
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     middleware::{self, Next},
     response::Response,
     routing::{delete, get, post, put},
-    Router,
 };
 use rmcp::transport::streamable_http_server::{
-    session::local::LocalSessionManager,
-    tower::StreamableHttpService,
+    session::local::LocalSessionManager, tower::StreamableHttpService,
 };
 use std::{sync::Arc, time::Duration};
 use tera::Tera;
@@ -72,25 +71,34 @@ pub fn run() {
     });
 }
 
-fn build_router(
-    tera: Arc<Tera>,
-    mcp_router: Option<Router>,
-) -> Router {
+fn build_router(tera: Arc<Tera>, mcp_router: Option<Router>) -> Router {
     let assets_path = APP_CONF.assets.path.canonicalize().unwrap();
 
     // Build authenticated sub-routers
     let reporter_routes = Router::new()
         .route("/{probe_id}/{node_id}", post(routes::reporter_report))
-        .route("/{probe_id}/{node_id}/{replica_id}", delete(routes::reporter_flush))
+        .route(
+            "/{probe_id}/{node_id}/{replica_id}",
+            delete(routes::reporter_flush),
+        )
         .layer(middleware::from_fn(basic_auth_reporter));
 
     let manager_routes = Router::new()
         .route("/announcements", get(routes::manager_announcements))
         .route("/announcement", post(routes::manager_announcement_insert))
-        .route("/announcement/{announcement_id}", delete(routes::manager_announcement_retract))
+        .route(
+            "/announcement/{announcement_id}",
+            delete(routes::manager_announcement_retract),
+        )
         .route("/prober/alerts", get(routes::manager_prober_alerts))
-        .route("/prober/alerts/ignored", get(routes::manager_prober_alerts_ignored_resolve))
-        .route("/prober/alerts/ignored", put(routes::manager_prober_alerts_ignored_update))
+        .route(
+            "/prober/alerts/ignored",
+            get(routes::manager_prober_alerts_ignored_resolve),
+        )
+        .route(
+            "/prober/alerts/ignored",
+            put(routes::manager_prober_alerts_ignored_update),
+        )
         .layer(middleware::from_fn(basic_auth_manager));
 
     let mut app = Router::new()
@@ -106,8 +114,14 @@ fn build_router(
         // Static assets
         .nest_service("/assets/fonts", ServeDir::new(assets_path.join("fonts")))
         .nest_service("/assets/images", ServeDir::new(assets_path.join("images")))
-        .nest_service("/assets/stylesheets", ServeDir::new(assets_path.join("stylesheets")))
-        .nest_service("/assets/javascripts", ServeDir::new(assets_path.join("javascripts")))
+        .nest_service(
+            "/assets/stylesheets",
+            ServeDir::new(assets_path.join("stylesheets")),
+        )
+        .nest_service(
+            "/assets/javascripts",
+            ServeDir::new(assets_path.join("javascripts")),
+        )
         .with_state(tera)
         .layer(NormalizePathLayer::trim_trailing_slash());
 

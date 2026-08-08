@@ -4,8 +4,8 @@
 // Copyright: 2022, Valerian Saliou <valerian@valeriansaliou.name>
 // License: Mozilla Public License v2.0 (MPL v2.0)
 
-use std::sync::LazyLock;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::sync::RwLock;
 use time;
 use time::format_description::FormatItem;

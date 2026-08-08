@@ -11,12 +11,12 @@ use std::time::{Duration, SystemTime};
 use time;
 use time::format_description::FormatItem;
 
+use crate::APP_CONF;
 use crate::config::config::ConfigNotifyReminderBackoffFunction;
 use crate::notifier::generic::Notification;
 use crate::prober::manager::STORE as PROBER_STORE;
 use crate::prober::mode::Mode;
 use crate::prober::status::Status;
-use crate::APP_CONF;
 
 #[cfg(feature = "notifier-email")]
 use crate::notifier::email::EmailNotifier;

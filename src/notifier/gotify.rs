@@ -11,15 +11,17 @@ use std::time::Duration;
 
 use reqwest::blocking::Client;
 
-use super::generic::{GenericNotifier, Notification, DISPATCH_TIMEOUT_SECONDS};
-use crate::config::config::ConfigNotify;
+use super::generic::{DISPATCH_TIMEOUT_SECONDS, GenericNotifier, Notification};
 use crate::APP_CONF;
+use crate::config::config::ConfigNotify;
 
-static GOTIFY_HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| Client::builder()
-    .timeout(Duration::from_secs(DISPATCH_TIMEOUT_SECONDS))
-    .gzip(true)
-    .build()
-    .unwrap());
+static GOTIFY_HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| {
+    Client::builder()
+        .timeout(Duration::from_secs(DISPATCH_TIMEOUT_SECONDS))
+        .gzip(true)
+        .build()
+        .unwrap()
+});
 
 pub struct GotifyNotifier;
 

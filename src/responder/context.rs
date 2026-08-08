@@ -11,8 +11,8 @@ use time;
 use url_serde::SerdeUrl;
 
 use super::announcements::Announcement;
-use crate::prober::states::ServiceStates;
 use crate::APP_CONF;
+use crate::prober::states::ServiceStates;
 
 const LOGO_EXTENSION_SPLIT_SPAN: usize = 4;
 
@@ -29,9 +29,8 @@ pub static INDEX_CONFIG: LazyLock<IndexContextConfig> = LazyLock::new(|| IndexCo
     support_url: APP_CONF.branding.support_url.to_owned(),
     custom_html: APP_CONF.branding.custom_html.to_owned(),
 });
-pub static INDEX_ENVIRONMENT: LazyLock<IndexContextEnvironment> = LazyLock::new(|| {
-    IndexContextEnvironment::default()
-});
+pub static INDEX_ENVIRONMENT: LazyLock<IndexContextEnvironment> =
+    LazyLock::new(|| IndexContextEnvironment::default());
 
 #[derive(Serialize)]
 pub enum ImageMime {

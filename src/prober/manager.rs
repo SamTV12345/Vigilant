@@ -6,8 +6,8 @@
 
 use std::cmp::min;
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
-use std::sync::LazyLock;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::sync::RwLock;
 use std::thread;
 use std::time::{Duration, SystemTime};
@@ -15,10 +15,10 @@ use time;
 
 use indexmap::IndexMap;
 use ping::Ping;
+use reqwest::StatusCode;
 use reqwest::blocking::Client;
 use reqwest::header::{HeaderMap, USER_AGENT};
 use reqwest::redirect::Policy as RedirectPolicy;
-use reqwest::StatusCode;
 use run_script::{self, ScriptOptions};
 
 use ssh2::Session;
@@ -30,11 +30,11 @@ use super::states::{
     ServiceStatesProbeNodeReplicaMetrics, ServiceStatesProbeNodeReplicaMetricsRabbitMQ,
 };
 use super::status::Status;
+use crate::APP_CONF;
 use crate::config::config::{ConfigPluginsRabbitMQ, ConfigProbeServiceNodeHTTPMethod};
 use crate::config::regex::Regex;
 use crate::prober::manager::STORE as PROBER_STORE;
 use crate::prober::mode::Mode;
-use crate::APP_CONF;
 
 const PROBE_ICMP_TIMEOUT_SECONDS: u64 = 1;
 const SECOND_TO_MILLISECONDS: u32 = 1000;
@@ -553,9 +553,9 @@ fn proceed_replica_probe_poll_http(
                 if let &Some(ref body_match_regex) = body_match {
                     if let Ok(text) = response_inner.text() {
                         debug!(
-                        "checking prober poll response text for http target: {} for any match: {}",
-                        &url_bang, &text
-                    );
+                            "checking prober poll response text for http target: {} for any match: {}",
+                            &url_bang, &text
+                        );
 
                         // Doesnt match? Consider as DOWN.
                         if body_match_regex.is_match(&text) == false {

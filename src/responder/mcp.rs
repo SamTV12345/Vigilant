@@ -5,12 +5,13 @@
 // License: Mozilla Public License v2.0 (MPL v2.0)
 
 use rmcp::{
+    ServerHandler,
     handler::server::{
         router::tool::ToolRouter,
         wrapper::{Json, Parameters},
     },
     model::{ServerCapabilities, ServerInfo},
-    schemars, tool, tool_handler, tool_router, ServerHandler,
+    schemars, tool, tool_handler, tool_router,
 };
 
 use super::payload::StatusReportResponsePayload;

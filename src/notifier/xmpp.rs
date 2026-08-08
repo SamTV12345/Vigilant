@@ -9,9 +9,9 @@ use std::time::{Duration, SystemTime};
 
 use libstrophe::{Connection, ConnectionEvent, Context, Stanza};
 
-use super::generic::{GenericNotifier, Notification, DISPATCH_TIMEOUT_SECONDS};
-use crate::config::config::ConfigNotify;
+use super::generic::{DISPATCH_TIMEOUT_SECONDS, GenericNotifier, Notification};
 use crate::APP_CONF;
+use crate::config::config::ConfigNotify;
 
 pub struct XMPPNotifier;
 

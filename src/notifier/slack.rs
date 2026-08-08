@@ -9,16 +9,18 @@ use std::time::Duration;
 
 use reqwest::blocking::Client;
 
-use super::generic::{GenericNotifier, Notification, DISPATCH_TIMEOUT_SECONDS};
+use super::generic::{DISPATCH_TIMEOUT_SECONDS, GenericNotifier, Notification};
+use crate::APP_CONF;
 use crate::config::config::ConfigNotify;
 use crate::prober::status::Status;
-use crate::APP_CONF;
 
-static SLACK_HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| Client::builder()
-    .timeout(Duration::from_secs(DISPATCH_TIMEOUT_SECONDS))
-    .gzip(true)
-    .build()
-    .unwrap());
+static SLACK_HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| {
+    Client::builder()
+        .timeout(Duration::from_secs(DISPATCH_TIMEOUT_SECONDS))
+        .gzip(true)
+        .build()
+        .unwrap()
+});
 
 pub struct SlackNotifier;
 

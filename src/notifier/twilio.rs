@@ -10,19 +10,21 @@ use std::time::Duration;
 
 use reqwest::blocking::Client;
 
-use super::generic::{GenericNotifier, Notification, DISPATCH_TIMEOUT_SECONDS};
-use crate::config::config::ConfigNotify;
+use super::generic::{DISPATCH_TIMEOUT_SECONDS, GenericNotifier, Notification};
 use crate::APP_CONF;
+use crate::config::config::ConfigNotify;
 
 static TEXT_MESSAGE_TRUNCATED_INDICATOR: &'static str = "[..]";
 
 const TEXT_MESSAGE_MAXIMUM_LENGTH: usize = 1000;
 
-static TWILIO_HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| Client::builder()
-    .timeout(Duration::from_secs(DISPATCH_TIMEOUT_SECONDS))
-    .gzip(true)
-    .build()
-    .unwrap());
+static TWILIO_HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| {
+    Client::builder()
+        .timeout(Duration::from_secs(DISPATCH_TIMEOUT_SECONDS))
+        .gzip(true)
+        .build()
+        .unwrap()
+});
 
 pub struct TwilioNotifier;
 

@@ -6,7 +6,7 @@
 
 use envsubst::substitute;
 use std::{
-    collections::{hash_set::HashSet, HashMap},
+    collections::{HashMap, hash_set::HashSet},
     env, fs,
 };
 

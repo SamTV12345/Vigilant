@@ -11,21 +11,25 @@ use std::time::Duration;
 
 use reqwest::blocking::Client;
 
-use super::generic::{GenericNotifier, Notification, DISPATCH_TIMEOUT_SECONDS};
-use crate::config::config::ConfigNotify;
+use super::generic::{DISPATCH_TIMEOUT_SECONDS, GenericNotifier, Notification};
 use crate::APP_CONF;
+use crate::config::config::ConfigNotify;
 
-static MATRIX_HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| Client::builder()
-    .timeout(Duration::from_secs(DISPATCH_TIMEOUT_SECONDS))
-    .gzip(true)
-    .build()
-    .unwrap());
-static MATRIX_FORMATTERS: LazyLock<Vec<fn(&Notification) -> String>> = LazyLock::new(|| vec![
-    format_status,
-    format_replicas,
-    format_status_page,
-    format_time,
-]);
+static MATRIX_HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| {
+    Client::builder()
+        .timeout(Duration::from_secs(DISPATCH_TIMEOUT_SECONDS))
+        .gzip(true)
+        .build()
+        .unwrap()
+});
+static MATRIX_FORMATTERS: LazyLock<Vec<fn(&Notification) -> String>> = LazyLock::new(|| {
+    vec![
+        format_status,
+        format_replicas,
+        format_status_page,
+        format_time,
+    ]
+});
 
 static MATRIX_MESSAGE_BODY: &'static str = "You received a Vigil alert.";
 static MATRIX_MESSAGE_TYPE: &'static str = "m.text";
