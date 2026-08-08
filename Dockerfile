@@ -10,7 +10,7 @@ RUN cargo build --release
 FROM scratch
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=builder /app/target/release/vigilant /usr/local/bin/vigilant
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/vigilant /usr/local/bin/vigilant
 COPY res/ ./res/
 
 ENV DATABASE_URL=sqlite:/app/vigilant.db?mode=rwc
