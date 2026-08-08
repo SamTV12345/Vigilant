@@ -17,6 +17,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # -- Build Rust binary (native, no QEMU) --
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: release-cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Build Rust binary (release)
+        run: cargo build --release
+
       # -- Build frontend --
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -39,7 +58,7 @@ jobs:
         working-directory: frontend
         run: pnpm build
 
-      # -- Docker metadata --
+      # -- Docker (thin, just copies pre-built binary + assets) --
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -58,9 +77,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -72,18 +88,18 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           push: true
-          platforms: linux/amd64,linux/arm64
+          # Single arch — binary is pre-built natively, no QEMU needed
+          platforms: linux/amd64
 
       # -- Write values.yaml --
       - name: Update values.yaml
         run: |
-          IMAGE_DIGEST="${{ steps.build.outputs.digest }}"
           cat > values.yaml << EOF
           # Managed by .github/workflows/release.yml — do not edit by hand.
           # Updated automatically after every successful image push.
           image:
             repository: ghcr.io/samtv12345/vigilant
-            tag: "${IMAGE_DIGEST}"
+            tag: "${{ steps.build.outputs.digest }}"
           EOF
 
       - name: Commit and push values.yaml
