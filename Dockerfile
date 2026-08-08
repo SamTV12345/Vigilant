@@ -4,7 +4,7 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
-COPY vigilant /usr/local/bin/vigilant
+COPY target/release/vigilant /usr/local/bin/vigilant
 COPY res/ ./res/
 
 ENV DATABASE_URL=sqlite:/app/vigilant.db?mode=rwc
