@@ -99,7 +99,7 @@ jobs:
           # Updated automatically after every successful image push.
           image:
             repository: ghcr.io/samtv12345/vigilant
-            tag: "${{ steps.build.outputs.digest }}"
+            digest: "${{ steps.build.outputs.digest }}"
           EOF
 
       - name: Commit and push values.yaml
