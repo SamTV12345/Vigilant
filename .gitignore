@@ -1,8 +1,22 @@
-target/*
+target/
 .DS_Store
 *~
 *#
 .cargo
 
 build/
-.idea
+.idea/
+
+# Rust
+*.pdb
+*.exe
+
+# SQLite
+*.db
+
+# Old frontend
+res/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/

@@ -1,170 +1,92 @@
-// Vigil
-//
-// Microservices Status Page
-// Copyright: 2018, Valerian Saliou <valerian@valeriansaliou.name>
-// License: Mozilla Public License v2.0 (MPL v2.0)
+// Vigilant
+// Microservices Status Page — Uptime Kuma style
 
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate serde_derive;
 
-mod aggregator;
-mod config;
-mod notifier;
-mod prober;
-mod responder;
+use std::sync::Arc;
 
-use std::ops::Deref;
-use std::str::FromStr;
-use std::sync::LazyLock;
-use std::thread;
-use std::time::Duration;
+use axum::Router;
+use socketioxide::SocketIo;
+use tokio::sync::Mutex;
+use tower_http::cors::{Any, CorsLayer};
+use tower_http::services::{ServeDir, ServeFile};
 
-use clap::{Arg, Command};
-use log::LevelFilter;
+use vigilant::AppState;
+use vigilant::config::AppConfig;
 
-use crate::aggregator::manager::run as run_aggregator;
-use crate::config::config::Config;
-use crate::config::logger::ConfigLogger;
-use crate::config::reader::ConfigReader;
-use crate::prober::manager::{
-    initialize_store as initialize_store_prober, run_poll as run_poll_prober,
-    run_script as run_script_prober,
-};
-use crate::responder::manager::run as run_responder;
+#[tokio::main]
+async fn main() {
+    let app_config = Arc::new(AppConfig::load());
 
-struct AppArgs {
-    config: String,
-}
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("vigilant=debug,info"),
+    )
+    .init();
 
-pub static THREAD_NAME_PROBER_POLL: &'static str = "vigil-prober-poll";
-pub static THREAD_NAME_PROBER_SCRIPT: &'static str = "vigil-prober-script";
-pub static THREAD_NAME_AGGREGATOR: &'static str = "vigil-aggregator";
-pub static THREAD_NAME_RESPONDER: &'static str = "vigil-responder";
+    info!("starting vigilant on {}", app_config.listen_addr);
 
-macro_rules! gen_spawn_managed {
-    ($name:expr, $method:ident, $thread_name:ident, $managed_fn:ident) => {
-        fn $method() {
-            debug!("spawn managed thread: {}", $name);
+    let pool = vigilant::db::init_pool(&app_config.database_url)
+        .await
+        .expect("failed to initialize database");
 
-            let worker = thread::Builder::new()
-                .name($thread_name.to_string())
-                .spawn($managed_fn);
+    // Socket.IO layer — emit events from API handlers via state.io
+    let (io_layer, io) = SocketIo::new_layer();
 
-            // Block on worker thread (join it)
-            let has_error = if let Ok(worker_thread) = worker {
-                worker_thread.join().is_err()
-            } else {
-                true
-            };
+    // Register default namespace so emit() works
+    io.ns(
+        "/",
+        |_socket: socketioxide::extract::SocketRef| async move {},
+    );
 
-            // Worker thread crashed?
-            if has_error == true {
-                error!("managed thread crashed ({}), setting it up again", $name);
-
-                // Prevents thread start loop floods
-                thread::sleep(Duration::from_secs(1));
-
-                $method();
-            }
+    // Heartbeat every 10s so frontend knows the connection is alive
+    let hb_io = io.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
+        loop {
+            interval.tick().await;
+            hb_io
+                .emit(
+                    "heartbeat",
+                    &serde_json::json!({"time": chrono::Utc::now().to_rfc3339()}),
+                )
+                .ok();
         }
+    });
+
+    // Probe engine — polls monitors from DB and writes check results
+    let probe_pool = pool.clone();
+    let notifier = Arc::new(Mutex::new(vigilant::notifier::NotifierState::new(
+        pool.clone(),
+    )));
+    tokio::spawn(async move { vigilant::prober::start(probe_pool, notifier).await });
+
+    let state = AppState {
+        db: pool,
+        config: app_config.clone(),
+        io: io.clone(),
     };
-}
 
-static APP_ARGS: LazyLock<AppArgs> = LazyLock::new(|| make_app_args());
-static APP_CONF: LazyLock<Config> = LazyLock::new(|| ConfigReader::make());
+    let api_routes = vigilant::api::build_router(state.clone());
 
-gen_spawn_managed!(
-    "prober-poll",
-    spawn_poll_prober,
-    THREAD_NAME_PROBER_POLL,
-    run_poll_prober
-);
-gen_spawn_managed!(
-    "prober-script",
-    spawn_script_prober,
-    THREAD_NAME_PROBER_SCRIPT,
-    run_script_prober
-);
-gen_spawn_managed!(
-    "aggregator",
-    spawn_aggregator,
-    THREAD_NAME_AGGREGATOR,
-    run_aggregator
-);
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
 
-gen_spawn_managed!(
-    "responder",
-    spawn_responder,
-    THREAD_NAME_RESPONDER,
-    run_responder
-);
+    let assets_dir = ServeDir::new(&app_config.assets_path);
+    let spa_fallback = ServeFile::new(format!("{}/index.html", app_config.assets_path));
+    let app = Router::new()
+        .merge(api_routes)
+        .layer(io_layer)
+        .layer(cors)
+        .fallback_service(assets_dir.fallback(spa_fallback));
 
-fn make_app_args() -> AppArgs {
-    let matches = Command::new(clap::crate_name!())
-        .version(clap::crate_version!())
-        .author(clap::crate_authors!())
-        .about(clap::crate_description!())
-        .arg(
-            Arg::new("config")
-                .short('c')
-                .long("config")
-                .help("Path to configuration file")
-                .default_value("./config.cfg"),
-        )
-        .get_matches();
+    let listener = tokio::net::TcpListener::bind(&app_config.listen_addr)
+        .await
+        .expect("failed to bind");
 
-    // Generate owned app arguments
-    AppArgs {
-        config: matches
-            .get_one::<String>("config")
-            .expect("invalid config value")
-            .to_owned(),
-    }
-}
+    info!("listening on {}", app_config.listen_addr);
 
-fn ensure_states() {
-    // Ensure all statics are valid (a `deref` is enough to lazily initialize them)
-    let (_, _) = (APP_ARGS.deref(), APP_CONF.deref());
-
-    // Ensure assets path exists
-    assert_eq!(
-        APP_CONF.assets.path.exists(),
-        true,
-        "assets directory not found: {:?}",
-        APP_CONF.assets.path
-    );
-}
-
-fn main() {
-    // Ensure OpenSSL root chain is found on current environment
-    unsafe {
-        openssl_probe::try_init_openssl_env_vars();
-    }
-
-    // Initialize shared logger
-    let _logger = ConfigLogger::init(
-        LevelFilter::from_str(&APP_CONF.server.log_level).expect("invalid log level"),
-    );
-
-    info!("starting up");
-
-    // Ensure all states are bound
-    ensure_states();
-
-    // Initialize prober store
-    initialize_store_prober();
-
-    // Spawn probes (background thread)
-    thread::spawn(spawn_poll_prober);
-    thread::spawn(spawn_script_prober);
-
-    // Spawn aggregator (background thread)
-    thread::spawn(spawn_aggregator);
-
-    // Spawn Web responder (foreground thread)
-    spawn_responder();
-
-    error!("could not start");
+    axum::serve(listener, app).await.unwrap();
 }

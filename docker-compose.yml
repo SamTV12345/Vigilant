@@ -1,0 +1,12 @@
+services:
+  vigilant:
+    build: .
+    container_name: vigilant
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./vigilant.db:/app/vigilant.db
+    environment:
+      - DATABASE_URL=sqlite:/app/vigilant.db?mode=rwc
+      - JWT_SECRET=change-me-in-production
+    restart: unless-stopped
