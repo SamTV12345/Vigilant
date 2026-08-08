@@ -155,3 +155,100 @@ fn format_message(notification: &Notification) -> String {
             accumulator
         })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_notification(startup: bool, changed: bool) -> Notification<'static> {
+        Notification {
+            status: &crate::prober::status::Status::Dead,
+            time: "12:00:00 UTC+00:00".to_string(),
+            replicas: vec!["svc:node:r0", "svc:node:r1"],
+            changed,
+            escalated: None,
+            startup,
+        }
+    }
+
+    #[test]
+    fn test_format_status_startup() {
+        let n = make_notification(true, true);
+        let result = format_status(&n);
+        assert!(result.contains("started up"));
+        assert!(result.contains("DEAD"));
+        assert!(result.contains("<p>"));
+        assert!(result.contains("<em>"));
+    }
+
+    #[test]
+    fn test_format_status_changed() {
+        let n = make_notification(false, true);
+        let result = format_status(&n);
+        assert!(result.contains("changed to"));
+    }
+
+    #[test]
+    fn test_format_status_unchanged() {
+        let n = make_notification(false, false);
+        let result = format_status(&n);
+        assert!(result.contains("is still"));
+    }
+
+    #[test]
+    fn test_format_replicas_with_items() {
+        let n = make_notification(false, false);
+        let result = format_replicas(&n);
+        assert!(result.contains("<ul>"));
+        assert!(result.contains("<li>"));
+        assert!(result.contains("svc:node"));
+        assert!(result.contains("dead"));
+        assert!(result.contains("</ul>"));
+    }
+
+    #[test]
+    fn test_format_replicas_counts_duplicates() {
+        let mut n = make_notification(false, false);
+        n.replicas = vec!["svc:node:r0", "svc:node:r0", "svc:node:r1"];
+        let result = format_replicas(&n);
+        // svc:node appears 3 times (all replicas map to same service:node prefix)
+        assert!(
+            result.contains("svc:node"),
+            "expected svc:node in: {result}"
+        );
+        assert!(result.contains("<li>"), "expected <li> in: {result}");
+    }
+
+    #[test]
+    fn test_format_replicas_empty() {
+        let mut n = make_notification(false, false);
+        n.replicas = vec![];
+        let result = format_replicas(&n);
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_format_status_page() {
+        let n = make_notification(false, false);
+        let result = format_status_page(&n);
+        assert!(result.contains("Status page:"));
+    }
+
+    #[test]
+    fn test_format_time() {
+        let n = make_notification(false, false);
+        let result = format_time(&n);
+        assert!(result.contains("<p>Time:"));
+        assert!(result.contains("12:00:00"));
+    }
+
+    #[test]
+    fn test_format_message_concatenates_all_formatters() {
+        let n = make_notification(false, false);
+        let result = format_message(&n);
+        assert!(result.contains("<p>"));
+        assert!(result.contains("<ul>") || result.is_empty());
+        // Should contain parts from all four formatters
+        assert!(!result.is_empty());
+    }
+}

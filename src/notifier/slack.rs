@@ -152,3 +152,28 @@ fn status_to_color(status: &Status) -> &'static str {
         &Status::Dead => "danger",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_status_to_color_healthy() {
+        assert_eq!(status_to_color(&Status::Healthy), "good");
+    }
+
+    #[test]
+    fn test_status_to_color_sick() {
+        assert_eq!(status_to_color(&Status::Sick), "warning");
+    }
+
+    #[test]
+    fn test_status_to_color_partial() {
+        assert_eq!(status_to_color(&Status::Partial), "warning");
+    }
+
+    #[test]
+    fn test_status_to_color_dead() {
+        assert_eq!(status_to_color(&Status::Dead), "danger");
+    }
+}

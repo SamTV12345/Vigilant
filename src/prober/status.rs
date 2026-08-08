@@ -39,3 +39,44 @@ impl Status {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_as_str_all_variants() {
+        assert_eq!(Status::Healthy.as_str(), "healthy");
+        assert_eq!(Status::Sick.as_str(), "sick");
+        assert_eq!(Status::Dead.as_str(), "dead");
+        assert_eq!(Status::Partial.as_str(), "partial");
+    }
+
+    #[test]
+    fn test_as_icon_all_variants() {
+        assert_eq!(Status::Healthy.as_icon(), "\u{2705}");
+        assert_eq!(Status::Sick.as_icon(), "\u{26a0}");
+        assert_eq!(Status::Partial.as_icon(), "\u{26a0}");
+        assert_eq!(Status::Dead.as_icon(), "\u{274c}");
+    }
+
+    #[test]
+    fn test_status_equality() {
+        assert_eq!(Status::Healthy, Status::Healthy);
+        assert_ne!(Status::Healthy, Status::Dead);
+        assert_ne!(Status::Sick, Status::Partial);
+    }
+
+    #[test]
+    fn test_status_copy() {
+        let s = Status::Sick;
+        let copied = s;
+        assert_eq!(s, copied);
+    }
+
+    #[test]
+    fn test_status_debug() {
+        assert_eq!(format!("{:?}", Status::Healthy), "Healthy");
+        assert_eq!(format!("{:?}", Status::Partial), "Partial");
+    }
+}

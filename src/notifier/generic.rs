@@ -106,3 +106,86 @@ impl<'a> Notification<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_notification(
+        changed: bool,
+        escalated: Option<u16>,
+        startup: bool,
+    ) -> Notification<'static> {
+        Notification {
+            status: &Status::Dead,
+            time: "12:00:00 UTC+00:00".to_string(),
+            replicas: vec!["svc:node:r0"],
+            changed,
+            escalated,
+            startup,
+        }
+    }
+
+    // --- Notification::expected tests ---
+
+    #[test]
+    fn test_expected_reminders_only_false_always_returns_true() {
+        let n = make_notification(true, None, false);
+        assert!(n.expected(false));
+
+        let n = make_notification(false, None, false);
+        assert!(n.expected(false));
+    }
+
+    #[test]
+    fn test_expected_reminders_only_true_changed_false() {
+        let n = make_notification(false, None, false);
+        assert!(n.expected(true));
+    }
+
+    #[test]
+    fn test_expected_reminders_only_true_changed_true() {
+        let n = make_notification(true, None, false);
+        assert!(!n.expected(true));
+    }
+
+    // --- Notification::escalated_for tests ---
+
+    #[test]
+    fn test_escalated_for_changed_status_never_escalates() {
+        let n = make_notification(true, Some(5), false);
+        assert!(!n.escalated_for(0));
+        assert!(!n.escalated_for(3));
+    }
+
+    #[test]
+    fn test_escalated_for_unchanged_within_range() {
+        let n = make_notification(false, Some(3), false);
+        assert!(n.escalated_for(0));
+        assert!(n.escalated_for(1));
+        assert!(n.escalated_for(2));
+        assert!(!n.escalated_for(3));
+        assert!(!n.escalated_for(99));
+    }
+
+    #[test]
+    fn test_escalated_for_unchanged_no_escalation_enabled() {
+        let n = make_notification(false, None, false);
+        assert!(n.escalated_for(0));
+        assert!(n.escalated_for(5));
+        assert!(n.escalated_for(999));
+    }
+
+    #[test]
+    fn test_escalated_for_zero_escalation() {
+        let n = make_notification(false, Some(0), false);
+        assert!(!n.escalated_for(0));
+        assert!(!n.escalated_for(1));
+    }
+
+    #[test]
+    fn test_escalated_for_startup_does_not_escalate() {
+        let n = make_notification(true, Some(5), true);
+        assert!(!n.escalated_for(0));
+    }
+}

@@ -587,6 +587,14 @@ fn proceed_replica_probe_poll_http(
     (false, None)
 }
 
+fn script_exit_code_to_status(code: i32) -> Status {
+    match code {
+        0 => Status::Healthy,
+        1 => Status::Sick,
+        _ => Status::Dead,
+    }
+}
+
 fn proceed_replica_probe_script(script: &String) -> (Status, Option<Duration>) {
     let start_time = SystemTime::now();
 
@@ -597,12 +605,7 @@ fn proceed_replica_probe_script(script: &String) -> (Status, Option<Duration>) {
                 code
             );
 
-            // Return code '0' goes for 'healthy', '1' goes for 'sick'; any other code is 'dead'
-            match code {
-                0 => Status::Healthy,
-                1 => Status::Sick,
-                _ => Status::Dead,
-            }
+            script_exit_code_to_status(code)
         }
         Err(err) => {
             error!("prober script execution failed with error: {}", err);
@@ -759,13 +762,21 @@ fn dispatch_replica<'a>(probe_replica: &ProbeReplica) {
     }
 }
 
+fn ceil_div(total: usize, divisor: u16) -> usize {
+    let d = divisor as usize;
+    if d == 0 {
+        return total;
+    }
+    let mut q = total / d;
+    if total % d > 0 {
+        q += 1;
+    }
+    q
+}
+
 fn dispatch_replicas_in_threads(replicas: Vec<ProbeReplica>, parallelism: u16) {
     // Acquire chunk size (round to the highest unit if there is a remainder)
-    let mut chunk_size = replicas.len() / parallelism as usize;
-
-    if replicas.len() % parallelism as usize > 0 {
-        chunk_size += 1;
-    }
+    let chunk_size = ceil_div(replicas.len(), parallelism);
 
     // Anything to scan?
     if chunk_size > 0 {
@@ -1042,5 +1053,56 @@ pub fn run_script() {
 
         // Hold for next aggregate run
         thread::sleep(Duration::from_secs(APP_CONF.metrics.script_interval));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_script_exit_code_healthy() {
+        assert_eq!(script_exit_code_to_status(0), Status::Healthy);
+    }
+
+    #[test]
+    fn test_script_exit_code_sick() {
+        assert_eq!(script_exit_code_to_status(1), Status::Sick);
+    }
+
+    #[test]
+    fn test_script_exit_code_dead() {
+        assert_eq!(script_exit_code_to_status(2), Status::Dead);
+        assert_eq!(script_exit_code_to_status(-1), Status::Dead);
+        assert_eq!(script_exit_code_to_status(255), Status::Dead);
+    }
+
+    #[test]
+    fn test_ceil_div_exact() {
+        assert_eq!(ceil_div(10, 2), 5);
+        assert_eq!(ceil_div(0, 4), 0);
+        assert_eq!(ceil_div(100, 5), 20);
+    }
+
+    #[test]
+    fn test_ceil_div_with_remainder() {
+        assert_eq!(ceil_div(10, 3), 4);
+        assert_eq!(ceil_div(1, 4), 1);
+        assert_eq!(ceil_div(7, 2), 4);
+    }
+
+    #[test]
+    fn test_ceil_div_single_thread() {
+        assert_eq!(ceil_div(50, 1), 50);
+    }
+
+    #[test]
+    fn test_ceil_div_more_threads_than_items() {
+        assert_eq!(ceil_div(3, 10), 1);
+    }
+
+    #[test]
+    fn test_ceil_div_zero_divisor() {
+        assert_eq!(ceil_div(5, 0), 5);
     }
 }

@@ -2218,6 +2218,7 @@ dependencies = [
  "run_script",
  "serde",
  "serde_derive",
+ "serde_json",
  "ssh2",
  "tera",
  "time",

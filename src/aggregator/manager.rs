@@ -69,6 +69,36 @@ struct BumpedStates {
     startup: bool,
 }
 
+fn should_notify_status_transition(old_status: &Status, new_status: &Status) -> bool {
+    (old_status != &Status::Dead && new_status == &Status::Dead)
+        || (old_status == &Status::Dead && new_status != &Status::Dead)
+}
+
+fn compute_node_status_min_replicas(
+    node_status: Status,
+    total_replicas: usize,
+    dead_count: usize,
+    min_available: Option<usize>,
+) -> Status {
+    if node_status == Status::Dead && dead_count > 0 && total_replicas > 0 {
+        if let Some(minimum) = min_available {
+            let available = total_replicas - dead_count;
+            if available > 0 && available >= minimum {
+                return Status::Partial;
+            }
+        }
+    }
+    node_status
+}
+
+fn compute_reminder_backoff_seconds(
+    base_interval: u64,
+    counter: u16,
+    function: &ConfigNotifyReminderBackoffFunction,
+) -> u64 {
+    base_interval * (counter as u64).pow(*function as u32)
+}
+
 fn check_child_status(parent_status: &Status, child_status: &Status) -> Option<Status> {
     if child_status == &Status::Dead {
         Some(Status::Dead)
@@ -78,6 +108,220 @@ fn check_child_status(parent_status: &Status, child_status: &Status) -> Option<S
         Some(Status::Partial)
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- check_child_status tests ---
+
+    #[test]
+    fn test_child_dead_always_wins() {
+        assert_eq!(
+            check_child_status(&Status::Healthy, &Status::Dead),
+            Some(Status::Dead)
+        );
+        assert_eq!(
+            check_child_status(&Status::Sick, &Status::Dead),
+            Some(Status::Dead)
+        );
+        assert_eq!(
+            check_child_status(&Status::Dead, &Status::Dead),
+            Some(Status::Dead)
+        );
+        assert_eq!(
+            check_child_status(&Status::Partial, &Status::Dead),
+            Some(Status::Dead)
+        );
+    }
+
+    #[test]
+    fn test_child_sick_promotes_when_parent_not_dead() {
+        assert_eq!(
+            check_child_status(&Status::Healthy, &Status::Sick),
+            Some(Status::Sick)
+        );
+        assert_eq!(
+            check_child_status(&Status::Partial, &Status::Sick),
+            Some(Status::Sick)
+        );
+    }
+
+    #[test]
+    fn test_child_sick_does_not_promote_when_parent_dead() {
+        assert_eq!(check_child_status(&Status::Dead, &Status::Sick), None);
+    }
+
+    #[test]
+    fn test_child_partial_promotes_when_parent_healthy() {
+        assert_eq!(
+            check_child_status(&Status::Healthy, &Status::Partial),
+            Some(Status::Partial)
+        );
+    }
+
+    #[test]
+    fn test_child_partial_does_not_promote_when_parent_not_healthy() {
+        assert_eq!(check_child_status(&Status::Sick, &Status::Partial), None);
+        assert_eq!(check_child_status(&Status::Dead, &Status::Partial), None);
+        assert_eq!(check_child_status(&Status::Partial, &Status::Partial), None);
+    }
+
+    #[test]
+    fn test_child_healthy_never_promotes() {
+        assert_eq!(check_child_status(&Status::Healthy, &Status::Healthy), None);
+        assert_eq!(check_child_status(&Status::Sick, &Status::Healthy), None);
+        assert_eq!(check_child_status(&Status::Dead, &Status::Healthy), None);
+        assert_eq!(check_child_status(&Status::Partial, &Status::Healthy), None);
+    }
+
+    // --- should_notify_status_transition tests ---
+
+    #[test]
+    fn test_should_notify_healthy_to_dead() {
+        assert!(should_notify_status_transition(
+            &Status::Healthy,
+            &Status::Dead
+        ));
+    }
+
+    #[test]
+    fn test_should_notify_sick_to_dead() {
+        assert!(should_notify_status_transition(
+            &Status::Sick,
+            &Status::Dead
+        ));
+    }
+
+    #[test]
+    fn test_should_notify_dead_to_sick() {
+        assert!(should_notify_status_transition(
+            &Status::Dead,
+            &Status::Sick
+        ));
+    }
+
+    #[test]
+    fn test_should_notify_dead_to_healthy() {
+        assert!(should_notify_status_transition(
+            &Status::Dead,
+            &Status::Healthy
+        ));
+    }
+
+    #[test]
+    fn test_should_notify_healthy_to_healthy() {
+        assert!(!should_notify_status_transition(
+            &Status::Healthy,
+            &Status::Healthy
+        ));
+    }
+
+    #[test]
+    fn test_should_notify_sick_to_sick() {
+        assert!(!should_notify_status_transition(
+            &Status::Sick,
+            &Status::Sick
+        ));
+    }
+
+    #[test]
+    fn test_should_notify_partial_to_dead() {
+        assert!(should_notify_status_transition(
+            &Status::Partial,
+            &Status::Dead
+        ));
+    }
+
+    #[test]
+    fn test_should_notify_dead_to_partial() {
+        assert!(should_notify_status_transition(
+            &Status::Dead,
+            &Status::Partial
+        ));
+    }
+
+    // --- compute_node_status_min_replicas tests ---
+
+    #[test]
+    fn test_min_replicas_dead_without_min_available() {
+        let result = compute_node_status_min_replicas(Status::Dead, 5, 2, None);
+        assert_eq!(result, Status::Dead);
+    }
+
+    #[test]
+    fn test_min_replicas_enough_available_becomes_partial() {
+        let result = compute_node_status_min_replicas(Status::Dead, 5, 3, Some(2));
+        assert_eq!(result, Status::Partial);
+    }
+
+    #[test]
+    fn test_min_replicas_too_few_available_stays_dead() {
+        let result = compute_node_status_min_replicas(Status::Dead, 5, 4, Some(2));
+        assert_eq!(result, Status::Dead);
+    }
+
+    #[test]
+    fn test_min_replicas_all_dead_stays_dead() {
+        let result = compute_node_status_min_replicas(Status::Dead, 3, 3, Some(1));
+        assert_eq!(result, Status::Dead);
+    }
+
+    #[test]
+    fn test_min_replicas_not_dead_passes_through() {
+        let result = compute_node_status_min_replicas(Status::Healthy, 5, 3, Some(1));
+        assert_eq!(result, Status::Healthy);
+        let result = compute_node_status_min_replicas(Status::Sick, 5, 3, Some(1));
+        assert_eq!(result, Status::Sick);
+        let result = compute_node_status_min_replicas(Status::Partial, 5, 3, Some(1));
+        assert_eq!(result, Status::Partial);
+    }
+
+    #[test]
+    fn test_min_replicas_no_dead_passes_through() {
+        let result = compute_node_status_min_replicas(Status::Dead, 5, 0, Some(2));
+        assert_eq!(result, Status::Dead);
+    }
+
+    #[test]
+    fn test_min_replicas_zero_total() {
+        let result = compute_node_status_min_replicas(Status::Dead, 0, 0, Some(1));
+        assert_eq!(result, Status::Dead);
+    }
+
+    // --- compute_reminder_backoff_seconds tests ---
+
+    #[test]
+    fn test_backoff_none_always_one() {
+        let f = ConfigNotifyReminderBackoffFunction::None;
+        assert_eq!(compute_reminder_backoff_seconds(120, 1, &f), 120);
+        assert_eq!(compute_reminder_backoff_seconds(120, 5, &f), 120);
+        assert_eq!(compute_reminder_backoff_seconds(120, 10, &f), 120);
+    }
+
+    #[test]
+    fn test_backoff_linear() {
+        let f = ConfigNotifyReminderBackoffFunction::Linear;
+        assert_eq!(compute_reminder_backoff_seconds(10, 1, &f), 10);
+        assert_eq!(compute_reminder_backoff_seconds(10, 2, &f), 20);
+        assert_eq!(compute_reminder_backoff_seconds(10, 3, &f), 30);
+    }
+
+    #[test]
+    fn test_backoff_square() {
+        let f = ConfigNotifyReminderBackoffFunction::Square;
+        assert_eq!(compute_reminder_backoff_seconds(10, 1, &f), 10);
+        assert_eq!(compute_reminder_backoff_seconds(10, 2, &f), 40);
+        assert_eq!(compute_reminder_backoff_seconds(10, 3, &f), 90);
+    }
+
+    #[test]
+    fn test_backoff_cubic() {
+        let f = ConfigNotifyReminderBackoffFunction::Cubic;
+        assert_eq!(compute_reminder_backoff_seconds(10, 1, &f), 10);
+        assert_eq!(compute_reminder_backoff_seconds(10, 2, &f), 80);
     }
 }
 
@@ -207,16 +451,12 @@ fn scan_and_bump_states() -> Option<BumpedStates> {
             }
 
             // Aggregate dead replicas into node status, respecting minimum available replicas?
-            if node_status == Status::Dead && dead_replica_count > 0 {
-                let available_replica_count = node.replicas.len() - dead_replica_count;
-
-                if let Some(minimum_available) = node.min_replicas_available {
-                    // Assign partial status? (instead of dead status)
-                    if available_replica_count > 0 && available_replica_count >= minimum_available {
-                        node_status = Status::Partial;
-                    }
-                }
-            }
+            node_status = compute_node_status_min_replicas(
+                node_status,
+                node.replicas.len(),
+                dead_replica_count,
+                node.min_replicas_available,
+            );
 
             // Bump probe status with worst node status?
             if let Some(worst_status) = check_child_status(&probe_status, &node_status) {
@@ -253,8 +493,7 @@ fn scan_and_bump_states() -> Option<BumpedStates> {
     //   - sick    >> dead
     //   - dead    >> sick
     //   - dead    >> healthy
-    let mut should_notify = (store.states.status != Status::Dead && general_status == Status::Dead)
-        || (store.states.status == Status::Dead && general_status != Status::Dead);
+    let mut should_notify = should_notify_status_transition(&store.states.status, &general_status);
 
     // Reset all counters whenever we are not dead (yet, stored status changed)
     if has_changed == true && general_status != Status::Dead {
@@ -280,11 +519,12 @@ fn scan_and_bump_states() -> Option<BumpedStates> {
                         let reminder_backoff_counter =
                             store.states.notifier.reminder_backoff_counter;
                         let reminder_ignore_until = store.states.notifier.reminder_ignore_until;
-                        let reminder_interval_backoff = Duration::from_secs(
-                            reminder_interval
-                                * (reminder_backoff_counter as u64)
-                                    .pow(notify.reminder_backoff_function as u32),
-                        );
+                        let reminder_interval_backoff =
+                            Duration::from_secs(compute_reminder_backoff_seconds(
+                                reminder_interval,
+                                reminder_backoff_counter,
+                                &notify.reminder_backoff_function,
+                            ));
 
                         // Check if reminders should be ignored for now?
                         let should_ignore_reminders =

@@ -57,3 +57,40 @@ impl Serialize for Regex {
         serializer.serialize_none()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deserialize_valid_regex() {
+        let re: Regex = serde_json::from_str("\"^hello.*\"").unwrap();
+        assert!(re.is_match("hello world"));
+        assert!(!re.is_match("nope"));
+    }
+
+    #[test]
+    fn test_deserialize_valid_case_insensitive() {
+        let re: Regex = serde_json::from_str("\"(?i)hello\"").unwrap();
+        assert!(re.is_match("HELLO"));
+    }
+
+    #[test]
+    fn test_deserialize_invalid_regex() {
+        let result: Result<Regex, _> = serde_json::from_str("\"(\"");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_deserialize_empty_pattern() {
+        let re: Regex = serde_json::from_str("\"\"").unwrap();
+        assert!(re.is_match("anything"));
+    }
+
+    #[test]
+    fn test_serialize_always_null() {
+        let re: Regex = serde_json::from_str("\"test\"").unwrap();
+        let serialized = serde_json::to_string(&re).unwrap();
+        assert_eq!(serialized, "null");
+    }
+}

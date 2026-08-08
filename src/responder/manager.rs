@@ -225,3 +225,53 @@ fn base64_decode(input: &str) -> Result<String, ()> {
 
     String::from_utf8(output).map_err(|_| ())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::base64_decode;
+
+    #[test]
+    fn test_decode_hello() {
+        assert_eq!(base64_decode("aGVsbG8=").unwrap(), "hello");
+    }
+
+    #[test]
+    fn test_decode_empty_input() {
+        // empty input → no chunks → empty output → Ok("")
+        assert_eq!(base64_decode(""), Ok(String::new()));
+    }
+
+    #[test]
+    fn test_decode_single_char() {
+        // "aA==" → "h" (single byte after padding removal)
+        // Actually "aA==" with our filter: bytes are [b'a', b'A'], chunk len=2 → 1 output byte
+        assert_eq!(base64_decode("aA==").unwrap(), "h");
+    }
+
+    #[test]
+    fn test_decode_two_bytes() {
+        // "aGg=" → "hh" (3 chars after padding removal → 2 output bytes)
+        assert_eq!(base64_decode("aGg=").unwrap(), "hh");
+    }
+
+    #[test]
+    fn test_decode_invalid_char() {
+        assert!(base64_decode("!!!").is_err());
+    }
+
+    #[test]
+    fn test_decode_vigil() {
+        assert_eq!(base64_decode("VmlnaWw=").unwrap(), "Vigil");
+    }
+
+    #[test]
+    fn test_decode_without_padding() {
+        assert_eq!(base64_decode("aGVsbG8").unwrap(), "hello");
+    }
+
+    #[test]
+    fn test_decode_short_chunk() {
+        // Single byte < 2 base64 chars is an error
+        assert!(base64_decode("a").is_err());
+    }
+}

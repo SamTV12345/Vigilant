@@ -121,3 +121,24 @@ fn generate_api_url(account_sid: &str) -> String {
         account_sid
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_api_url() {
+        let url = generate_api_url("AC12345");
+        assert_eq!(
+            url,
+            "https://api.twilio.com/2010-04-01/Accounts/AC12345/Messages.json"
+        );
+    }
+
+    #[test]
+    fn test_generate_api_url_empty_sid() {
+        let url = generate_api_url("");
+        assert!(url.starts_with("https://api.twilio.com"));
+        assert!(url.ends_with("Messages.json"));
+    }
+}

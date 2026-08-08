@@ -47,6 +47,9 @@ run_script = "0.11"
 lettre = { version = "0.11", features = ["smtp-transport", "native-tls", "hostname", "builder"], default-features = false, optional = true }
 libstrophe = { version = "0.20", optional = true }
 
+[dev-dependencies]
+serde_json = "1.0"
+
 [features]
 default = ["notifier-email", "notifier-twilio", "notifier-slack", "notifier-zulip", "notifier-telegram", "notifier-pushover", "notifier-gotify", "notifier-matrix", "notifier-webex", "notifier-webhook"]
 notifier-email = ["lettre"]

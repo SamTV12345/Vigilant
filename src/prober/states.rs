@@ -109,3 +109,51 @@ pub struct ServiceStatesNotifier {
     pub reminder_backoff_counter: u16,
     pub reminder_ignore_until: Option<SystemTime>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_replica_metrics_default() {
+        let metrics = ServiceStatesProbeNodeReplicaMetrics::default();
+        assert!(metrics.latency.is_none());
+        assert!(metrics.system.is_none());
+        assert!(metrics.rabbitmq.is_none());
+    }
+
+    #[test]
+    fn test_load_queue_default() {
+        let queue = ServiceStatesProbeNodeReplicaLoadQueue::default();
+        assert!(!queue.loaded);
+        assert!(!queue.stalled);
+    }
+
+    #[test]
+    fn test_rabbitmq_metrics_default() {
+        let rmq = ServiceStatesProbeNodeReplicaMetricsRabbitMQ::default();
+        assert_eq!(rmq.queue_ready, 0);
+        assert_eq!(rmq.queue_nack, 0);
+    }
+
+    #[test]
+    fn test_serialize_replica_metrics_default() {
+        let metrics = ServiceStatesProbeNodeReplicaMetrics::default();
+        let json = serde_json::to_string(&metrics).unwrap();
+        // All optional fields should serialize to null
+        assert!(json.contains("\"latency\":null"));
+        assert!(json.contains("\"system\":null"));
+        assert!(json.contains("\"rabbitmq\":null"));
+    }
+
+    #[test]
+    fn test_serialize_load_queue() {
+        let queue = ServiceStatesProbeNodeReplicaLoadQueue {
+            loaded: true,
+            stalled: false,
+        };
+        let json = serde_json::to_string(&queue).unwrap();
+        assert!(json.contains("\"loaded\":true"));
+        assert!(json.contains("\"stalled\":false"));
+    }
+}

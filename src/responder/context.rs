@@ -48,7 +48,7 @@ pub enum ImageMime {
 }
 
 impl ImageMime {
-    fn guess_from(logo_url: &str) -> ImageMime {
+    pub fn guess_from(logo_url: &str) -> ImageMime {
         if logo_url.len() > LOGO_EXTENSION_SPLIT_SPAN {
             let (_, logo_url_extension) =
                 logo_url.split_at(logo_url.len() - LOGO_EXTENSION_SPLIT_SPAN);
@@ -99,4 +99,57 @@ pub struct IndexContextConfig {
 #[derive(Serialize)]
 pub struct IndexContextEnvironment {
     pub year: u16,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_guess_from_svg() {
+        let mime = ImageMime::guess_from("https://example.com/logo.svg");
+        assert!(matches!(mime, ImageMime::ImageSVG));
+    }
+
+    #[test]
+    fn test_guess_from_jpg() {
+        let mime = ImageMime::guess_from("https://example.com/logo.jpg");
+        assert!(matches!(mime, ImageMime::ImageJPEG));
+    }
+
+    #[test]
+    fn test_guess_from_gif() {
+        let mime = ImageMime::guess_from("https://example.com/logo.gif");
+        assert!(matches!(mime, ImageMime::ImageGIF));
+    }
+
+    #[test]
+    fn test_guess_from_png() {
+        let mime = ImageMime::guess_from("https://example.com/logo.png");
+        assert!(matches!(mime, ImageMime::ImagePNG));
+    }
+
+    #[test]
+    fn test_guess_from_unknown_extension_defaults_to_png() {
+        let mime = ImageMime::guess_from("https://example.com/logo.webp");
+        assert!(matches!(mime, ImageMime::ImagePNG));
+    }
+
+    #[test]
+    fn test_guess_from_no_extension_defaults_to_png() {
+        let mime = ImageMime::guess_from("https://example.com/logo");
+        assert!(matches!(mime, ImageMime::ImagePNG));
+    }
+
+    #[test]
+    fn test_guess_from_short_url_defaults_to_png() {
+        let mime = ImageMime::guess_from("a.b");
+        assert!(matches!(mime, ImageMime::ImagePNG));
+    }
+
+    #[test]
+    fn test_guess_from_empty_url() {
+        let mime = ImageMime::guess_from("");
+        assert!(matches!(mime, ImageMime::ImagePNG));
+    }
 }

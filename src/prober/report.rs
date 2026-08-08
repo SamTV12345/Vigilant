@@ -32,6 +32,26 @@ pub enum HandleFlushError {
     NotFound,
 }
 
+pub fn validate_load_values(load_cpu: f32, load_ram: f32) -> bool {
+    load_cpu >= 0.0 && load_ram >= 0.0
+}
+
+pub fn load_float_to_percent(value: f32) -> u16 {
+    (value * 100.0).round() as u16
+}
+
+pub fn is_valid_mode_for_load(mode: &Mode) -> bool {
+    *mode == Mode::Push
+}
+
+pub fn is_valid_mode_for_health(mode: &Mode) -> bool {
+    *mode == Mode::Local
+}
+
+pub fn is_valid_mode_for_flush(mode: &Mode) -> bool {
+    *mode == Mode::Push || *mode == Mode::Local
+}
+
 pub fn handle_load(
     probe_id: &str,
     node_id: &str,
@@ -46,7 +66,7 @@ pub fn handle_load(
     );
 
     // Validate loads
-    if load_cpu < 0.00 || load_ram < 0.00 {
+    if !validate_load_values(load_cpu, load_ram) {
         return Err(HandleLoadError::InvalidLoad);
     }
 
@@ -55,7 +75,7 @@ pub fn handle_load(
     if let Some(ref mut probe) = store.states.probes.get_mut(probe_id) {
         if let Some(ref mut node) = probe.nodes.get_mut(node_id) {
             // Mode isnt push? Dont accept report
-            if node.mode != Mode::Push {
+            if !is_valid_mode_for_load(&node.mode) {
                 return Err(HandleLoadError::WrongMode);
             }
 
@@ -78,8 +98,8 @@ pub fn handle_load(
 
             // Assign new system metrics
             metrics.system = Some(ServiceStatesProbeNodeReplicaMetricsSystem {
-                cpu: (load_cpu * 100.0).round() as u16,
-                ram: (load_ram * 100.0).round() as u16,
+                cpu: load_float_to_percent(load_cpu),
+                ram: load_float_to_percent(load_ram),
             });
 
             // Bump stored replica
@@ -131,7 +151,7 @@ pub fn handle_health(
     if let Some(ref mut probe) = store.states.probes.get_mut(probe_id) {
         if let Some(ref mut node) = probe.nodes.get_mut(node_id) {
             // Mode isnt local? Dont accept report
-            if node.mode != Mode::Local {
+            if !is_valid_mode_for_health(&node.mode) {
                 return Err(HandleHealthError::WrongMode);
             }
 
@@ -178,7 +198,7 @@ pub fn handle_flush(
     if let Some(ref mut probe) = store.states.probes.get_mut(probe_id) {
         if let Some(ref mut node) = probe.nodes.get_mut(node_id) {
             // Mode isnt push or local? Dont accept report
-            if node.mode != Mode::Push && node.mode != Mode::Local {
+            if !is_valid_mode_for_flush(&node.mode) {
                 return Err(HandleFlushError::WrongMode);
             }
 
@@ -196,4 +216,69 @@ pub fn handle_flush(
     );
 
     Err(HandleFlushError::NotFound)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_load_valid() {
+        assert!(validate_load_values(0.0, 0.0));
+        assert!(validate_load_values(0.5, 0.8));
+        assert!(validate_load_values(1.0, 1.0));
+    }
+
+    #[test]
+    fn test_validate_load_negative_cpu() {
+        assert!(!validate_load_values(-0.1, 0.5));
+    }
+
+    #[test]
+    fn test_validate_load_negative_ram() {
+        assert!(!validate_load_values(0.5, -0.1));
+    }
+
+    #[test]
+    fn test_validate_load_both_negative() {
+        assert!(!validate_load_values(-1.0, -2.0));
+    }
+
+    #[test]
+    fn test_load_float_to_percent() {
+        assert_eq!(load_float_to_percent(0.0), 0);
+        assert_eq!(load_float_to_percent(0.5), 50);
+        assert_eq!(load_float_to_percent(0.99), 99);
+        assert_eq!(load_float_to_percent(1.0), 100);
+    }
+
+    #[test]
+    fn test_load_float_to_percent_rounding() {
+        assert_eq!(load_float_to_percent(0.666), 67);
+        assert_eq!(load_float_to_percent(0.334), 33);
+    }
+
+    #[test]
+    fn test_is_valid_mode_for_load() {
+        assert!(is_valid_mode_for_load(&Mode::Push));
+        assert!(!is_valid_mode_for_load(&Mode::Poll));
+        assert!(!is_valid_mode_for_load(&Mode::Script));
+        assert!(!is_valid_mode_for_load(&Mode::Local));
+    }
+
+    #[test]
+    fn test_is_valid_mode_for_health() {
+        assert!(is_valid_mode_for_health(&Mode::Local));
+        assert!(!is_valid_mode_for_health(&Mode::Push));
+        assert!(!is_valid_mode_for_health(&Mode::Poll));
+        assert!(!is_valid_mode_for_health(&Mode::Script));
+    }
+
+    #[test]
+    fn test_is_valid_mode_for_flush() {
+        assert!(is_valid_mode_for_flush(&Mode::Push));
+        assert!(is_valid_mode_for_flush(&Mode::Local));
+        assert!(!is_valid_mode_for_flush(&Mode::Poll));
+        assert!(!is_valid_mode_for_flush(&Mode::Script));
+    }
 }
