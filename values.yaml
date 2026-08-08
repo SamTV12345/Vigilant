@@ -1,0 +1,5 @@
+# Managed by .github/workflows/release.yml — do not edit by hand.
+# Updated automatically after every successful image push.
+image:
+  repository: ghcr.io/samtv12345/vigilant
+  tag: "latest"
