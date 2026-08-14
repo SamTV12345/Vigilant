@@ -51,6 +51,15 @@ impl DbPool {
             Self::Sqlite(_) => panic!("expected Postgres pool"),
         }
     }
+
+    /// Readiness check — verifies the database is reachable. Returns `Ok(())`
+    /// when a trivial query succeeds, regardless of dialect.
+    pub async fn ping(&self) -> Result<(), sqlx::Error> {
+        match self {
+            Self::Sqlite(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ()),
+            Self::Postgres(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ()),
+        }
+    }
 }
 
 pub async fn init_pool(database_url: &str) -> Result<DbPool, sqlx::Error> {

@@ -4,6 +4,7 @@ pub mod announcements;
 pub mod auth;
 pub mod checks;
 pub mod feed;
+pub mod health;
 pub mod incidents;
 pub mod monitors;
 pub mod notifications;
@@ -89,6 +90,8 @@ pub fn build_router(state: AppState) -> Router {
         .route_layer(middleware::from_fn_with_state(state.clone(), require_auth));
 
     Router::new()
+        .route("/health/live", get(health::live))
+        .route("/health/ready", get(health::ready))
         .nest("/api", public)
         .nest("/api/auth", auth)
         .nest("/api/admin", admin)

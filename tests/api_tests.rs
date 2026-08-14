@@ -327,6 +327,26 @@ async fn atom_feed_content_type() {
     assert!(ct.starts_with("application/atom+xml"), "got: {ct}");
 }
 
+// -- Health --
+
+#[tokio::test]
+async fn health_live_ok() {
+    let (mut router, _pool) = setup_test_app().await;
+
+    let (status, json) = get(&mut router, "/health/live").await;
+    assert_eq!(status, 200);
+    assert_eq!(json["status"], "ok");
+}
+
+#[tokio::test]
+async fn health_ready_ok() {
+    let (mut router, _pool) = setup_test_app().await;
+
+    let (status, json) = get(&mut router, "/health/ready").await;
+    assert_eq!(status, 200);
+    assert_eq!(json["status"], "ok");
+}
+
 // -- Status --
 
 #[tokio::test]
