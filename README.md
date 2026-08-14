@@ -1,7 +1,7 @@
 Vigil
 =====
 
-[![Test and Build](https://github.com/valeriansaliou/vigil/actions/workflows/test.yml/badge.svg)](https://github.com/valeriansaliou/vigil/actions/workflows/test.yml) [![Build and Release](https://github.com/valeriansaliou/vigil/actions/workflows/build.yml/badge.svg)](https://github.com/valeriansaliou/vigil/actions/workflows/build.yml) [![dependency status](https://deps.rs/repo/github/valeriansaliou/vigil/status.svg)](https://deps.rs/repo/github/valeriansaliou/vigil) [![Buy Me A Coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg)](https://www.buymeacoffee.com/valeriansaliou)
+[![Test and Build](https://github.com/SamTV12345/Vigilant/actions/workflows/test.yml/badge.svg)](https://github.com/SamTV12345/Vigilant/actions/workflows/test.yml) [![Build and Release](https://github.com/SamTV12345/Vigilant/actions/workflows/release.yml/badge.svg)](https://github.com/SamTV12345/Vigilant/actions/workflows/release.yml) [![dependency status](https://deps.rs/repo/github/SamTV12345/Vigilant/status.svg)](https://deps.rs/repo/github/SamTV12345/Vigilant) [![Support me on Ko-fi](https://img.shields.io/badge/Ko--fi-Support-FF5E5B.svg)](https://ko-fi.com/samtv12345)
 
 **Microservices Status Page. Monitors a distributed infrastructure and sends alerts (Slack, SMS, etc.).**
 
@@ -90,7 +90,7 @@ _As an example of a status page running Crisp Status, check out [Enrich Status P
 
 ### Installation
 
-Vigil is built in Rust. To install it, either download a version from the [Vigil releases](https://github.com/valeriansaliou/vigil/releases) page, use `cargo install` or pull the source code from `master`.
+Vigil is built in Rust. To install it, either download a version from the [Vigil releases](https://github.com/SamTV12345/Vigilant/releases) page, use `cargo install` or pull the source code from `master`.
 
 **Install from packages:**
 
@@ -179,7 +179,7 @@ Vigil will be reachable from `http://localhost:8080`.
 
 ### Configuration
 
-Use the sample [config.cfg](https://github.com/valeriansaliou/vigil/blob/master/config.cfg) configuration file and adjust it to your own environment.
+Use the sample [config.cfg](https://github.com/SamTV12345/Vigilant/blob/master/config.cfg) configuration file and adjust it to your own environment.
 
 You can also use environment variables with string interpolation in your configuration file, eg. `manager_token = ${VIGIL_MANAGER_TOKEN}`.
 

@@ -12,5 +12,5 @@ We consider here the packaging flow of Vigil version `1.0.0` for Linux.
 
 2. **How to build Vigil, package it and release it on Crates, GitHub, Docker Hub and Packagecloud (multiple architectures):**
     1. Tag the latest Git commit corresponding to the release with tag `v1.0.0`, and push the tag
-    2. Wait for all release jobs to complete on the [actions](https://github.com/valeriansaliou/vigil/actions) page on GitHub
-    3. Publish a changelog and upload all the built archives on the [releases](https://github.com/valeriansaliou/vigil/releases) page on GitHub
+    2. Wait for all release jobs to complete on the [actions](https://github.com/SamTV12345/Vigilant/actions) page on GitHub
+    3. Publish a changelog and upload all the built archives on the [releases](https://github.com/SamTV12345/Vigilant/releases) page on GitHub

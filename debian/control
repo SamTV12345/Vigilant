@@ -4,7 +4,7 @@ Priority: ext
 Maintainer: Valerian Saliou <valerian@valeriansaliou.name>
 Standards-Version: 3.9.4
 Build-Depends: wget, ca-certificates
-Homepage: https://github.com/valeriansaliou/vigil
+Homepage: https://github.com/SamTV12345/Vigilant
 
 Package: vigil
 Architecture: any
