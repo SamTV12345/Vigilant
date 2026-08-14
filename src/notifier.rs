@@ -8,17 +8,16 @@ use lettre::{Message, SmtpTransport, Transport};
 use log::{debug, error, info, warn};
 use serde::Serialize;
 use serde_json::Value;
-use sqlx::SqlitePool;
-
+use crate::db::DbPool;
 use crate::db::models::Notification;
 
 pub struct NotifierState {
-    pool: SqlitePool,
+    pool: DbPool,
     last_known: HashMap<String, String>, // monitor_id -> last status
 }
 
 impl NotifierState {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub fn new(pool: DbPool) -> Self {
         Self {
             pool,
             last_known: HashMap::new(),

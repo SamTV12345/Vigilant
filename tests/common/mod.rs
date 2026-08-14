@@ -2,12 +2,12 @@
 use std::sync::Arc;
 
 use axum::Router;
-use sqlx::SqlitePool;
 use vigilant::AppState;
 use vigilant::config::AppConfig;
+use vigilant::db::DbPool;
 
-/// Build a test app with in-memory SQLite. Returns (Router, SqlitePool).
-pub async fn setup_test_app() -> (Router, SqlitePool) {
+/// Build a test app with in-memory SQLite. Returns (Router, DbPool).
+pub async fn setup_test_app() -> (Router, DbPool) {
     // In-memory SQLite with shared cache so all pool connections see the same DB
     let pool = vigilant::db::init_pool("sqlite::memory:?cache=shared")
         .await
@@ -35,7 +35,7 @@ pub async fn setup_test_app() -> (Router, SqlitePool) {
 }
 
 /// Insert a monitor and return its ID.
-pub async fn seed_monitor(pool: &SqlitePool, name: &str, status: &str) -> String {
+pub async fn seed_monitor(pool: &DbPool, name: &str, status: &str) -> String {
     use vigilant::db::models::CreateMonitor;
     let m = vigilant::db::queries::create_monitor(
         pool,
@@ -59,14 +59,14 @@ pub async fn seed_monitor(pool: &SqlitePool, name: &str, status: &str) -> String
     let _ = sqlx::query("UPDATE monitors SET current_status = ? WHERE id = ?")
         .bind(status)
         .bind(&id)
-        .execute(pool)
+        .execute(pool.as_sqlite())
         .await;
 
     id
 }
 
 /// Insert an incident for a monitor.
-pub async fn seed_incident(pool: &SqlitePool, monitor_id: &str, hours_ago: i64, resolved: bool) {
+pub async fn seed_incident(pool: &DbPool, monitor_id: &str, hours_ago: i64, resolved: bool) {
     let id = uuid::Uuid::new_v4().to_string();
     let since = format!("-{} hours", hours_ago);
     if resolved {
@@ -78,7 +78,7 @@ pub async fn seed_incident(pool: &SqlitePool, monitor_id: &str, hours_ago: i64, 
         .bind(monitor_id)
         .bind(&since)
         .bind(&since)
-        .execute(pool)
+        .execute(pool.as_sqlite())
         .await
         .expect("insert resolved incident");
     } else {
@@ -89,7 +89,7 @@ pub async fn seed_incident(pool: &SqlitePool, monitor_id: &str, hours_ago: i64, 
         .bind(&id)
         .bind(monitor_id)
         .bind(&since)
-        .execute(pool)
+        .execute(pool.as_sqlite())
         .await
         .expect("insert open incident");
     }

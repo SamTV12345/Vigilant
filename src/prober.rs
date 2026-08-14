@@ -6,15 +6,15 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
 use log::{debug, error, info};
-use sqlx::SqlitePool;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 
+use crate::db::DbPool;
 use crate::db::models::Monitor;
 use crate::db::queries;
 use crate::notifier::NotifierState;
 
-pub async fn start(pool: SqlitePool, notifier: Arc<Mutex<NotifierState>>) {
+pub async fn start(pool: DbPool, notifier: Arc<Mutex<NotifierState>>) {
     info!("probe engine started");
     let mut interval = tokio::time::interval(Duration::from_secs(5));
     let mut last_probe: HashMap<String, Instant> = HashMap::new();
@@ -64,7 +64,7 @@ pub async fn start(pool: SqlitePool, notifier: Arc<Mutex<NotifierState>>) {
     }
 }
 
-async fn probe_all(pool: SqlitePool, monitors: Vec<Monitor>, notifier: Arc<Mutex<NotifierState>>) {
+async fn probe_all(pool: DbPool, monitors: Vec<Monitor>, notifier: Arc<Mutex<NotifierState>>) {
     let mut set = JoinSet::new();
 
     for monitor in monitors {

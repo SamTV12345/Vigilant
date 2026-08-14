@@ -12,7 +12,7 @@ pub use config::AppConfig;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub db: sqlx::SqlitePool,
+    pub db: crate::db::DbPool,
     pub config: Arc<AppConfig>,
     pub io: socketioxide::SocketIo,
 }

@@ -4,8 +4,9 @@ mod common;
 use axum::body::Body;
 use http::Request;
 use serde_json::{Value, json};
-use sqlx::SqlitePool;
 use tower::ServiceExt;
+
+use vigilant::db::DbPool;
 
 use common::*;
 
@@ -50,7 +51,7 @@ async fn post(router: &mut axum::Router, path: &str, payload: &Value) -> (u16, V
 // -- Daily Uptime --
 
 async fn insert_checks_at(
-    pool: &SqlitePool,
+    pool: &DbPool,
     monitor_id: &str,
     entries: &[(&str, &str, Option<i64>)],
 ) {
@@ -62,7 +63,7 @@ async fn insert_checks_at(
         .bind(status)
         .bind(rt)
         .bind(timestamp)
-        .execute(pool)
+        .execute(pool.as_sqlite())
         .await
         .expect("insert check");
     }
