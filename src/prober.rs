@@ -40,7 +40,7 @@ pub async fn start(pool: DbPool, notifier: Arc<Mutex<NotifierState>>) {
                 let interval = Duration::from_secs(m.interval_secs.max(1) as u64);
                 last_probe
                     .get(&m.id)
-                    .map_or(true, |last| now.duration_since(*last) >= interval)
+                    .is_none_or(|last| now.duration_since(*last) >= interval)
             })
             .collect();
 
@@ -105,10 +105,9 @@ async fn probe_all(pool: DbPool, monitors: Vec<Monitor>, notifier: Arc<Mutex<Not
                     }
                 } else if (monitor.current_status == "sick" || monitor.current_status == "dead")
                     && status == "healthy"
+                    && let Err(e) = queries::resolve_incident(&pool, &monitor.id).await
                 {
-                    if let Err(e) = queries::resolve_incident(&pool, &monitor.id).await {
-                        error!("failed to resolve incident for {}: {e}", monitor.id);
-                    }
+                    error!("failed to resolve incident for {}: {e}", monitor.id);
                 }
 
                 // Dispatch notifications on status transition

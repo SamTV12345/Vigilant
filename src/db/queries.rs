@@ -6,8 +6,8 @@ use chrono::{Duration, Utc};
 use sqlx::Row;
 use uuid::Uuid;
 
-use super::models::*;
 use super::DbPool;
+use super::models::*;
 
 // -- Dialect helpers --
 
@@ -56,7 +56,11 @@ macro_rules! dispatch {
 // -- Monitors --
 
 pub async fn list_monitors(pool: &DbPool) -> Result<Vec<Monitor>, sqlx::Error> {
-    let sql = sql_for(pool, "SELECT * FROM monitors ORDER BY created_at DESC", None);
+    let sql = sql_for(
+        pool,
+        "SELECT * FROM monitors ORDER BY created_at DESC",
+        None,
+    );
     dispatch!(pool, |p| {
         sqlx::query_as::<_, Monitor>(&sql).fetch_all(p).await
     })
@@ -72,10 +76,7 @@ pub async fn get_monitor(pool: &DbPool, id: &str) -> Result<Option<Monitor>, sql
     })
 }
 
-pub async fn create_monitor(
-    pool: &DbPool,
-    input: &CreateMonitor,
-) -> Result<Monitor, sqlx::Error> {
+pub async fn create_monitor(pool: &DbPool, input: &CreateMonitor) -> Result<Monitor, sqlx::Error> {
     let id = Uuid::new_v4().to_string();
     let headers = input.headers.as_deref().unwrap_or("{}");
     let sql = sql_for(
@@ -117,7 +118,9 @@ pub async fn update_monitor(
     let sql = sql_for(
         pool,
         "UPDATE monitors SET name=?, url=?, interval_secs=?, timeout_secs=?, method=?, headers=?, body=?, script=?, active=?, updated_at=datetime('now') WHERE id=?",
-        Some("UPDATE monitors SET name=$1, url=$2, interval_secs=$3, timeout_secs=$4, method=$5, headers=$6, body=$7, script=$8, active=$9, updated_at=to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') WHERE id=$10"),
+        Some(
+            "UPDATE monitors SET name=$1, url=$2, interval_secs=$3, timeout_secs=$4, method=$5, headers=$6, body=$7, script=$8, active=$9, updated_at=to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') WHERE id=$10",
+        ),
     );
     dispatch!(pool, |p| {
         sqlx::query(&sql)
@@ -125,8 +128,18 @@ pub async fn update_monitor(
             .bind(input.url.as_deref().unwrap_or(&e.url))
             .bind(input.interval_secs.unwrap_or(e.interval_secs))
             .bind(input.timeout_secs.unwrap_or(e.timeout_secs))
-            .bind(input.method.as_deref().unwrap_or(e.method.as_deref().unwrap_or("GET")))
-            .bind(input.headers.as_deref().unwrap_or(e.headers.as_deref().unwrap_or("{}")))
+            .bind(
+                input
+                    .method
+                    .as_deref()
+                    .unwrap_or(e.method.as_deref().unwrap_or("GET")),
+            )
+            .bind(
+                input
+                    .headers
+                    .as_deref()
+                    .unwrap_or(e.headers.as_deref().unwrap_or("{}")),
+            )
             .bind(input.body.as_deref().or(e.body.as_deref()))
             .bind(input.script.as_deref().or(e.script.as_deref()))
             .bind(input.active.unwrap_or(e.active))
@@ -157,7 +170,9 @@ pub async fn update_monitor_status(
     let sql = sql_for(
         pool,
         "UPDATE monitors SET current_status = ?, updated_at = datetime('now') WHERE id = ?",
-        Some("UPDATE monitors SET current_status = $1, updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') WHERE id = $2"),
+        Some(
+            "UPDATE monitors SET current_status = $1, updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') WHERE id = $2",
+        ),
     );
     dispatch!(pool, |p| {
         sqlx::query(&sql)
@@ -321,7 +336,11 @@ pub async fn get_uptime(
 // -- Notifications --
 
 pub async fn list_notifications(pool: &DbPool) -> Result<Vec<Notification>, sqlx::Error> {
-    let sql = sql_for(pool, "SELECT * FROM notifications ORDER BY created_at DESC", None);
+    let sql = sql_for(
+        pool,
+        "SELECT * FROM notifications ORDER BY created_at DESC",
+        None,
+    );
     dispatch!(pool, |p| {
         sqlx::query_as::<_, Notification>(&sql).fetch_all(p).await
     })
@@ -386,7 +405,9 @@ pub async fn update_notification(
     let sql = sql_for(
         pool,
         "UPDATE notifications SET name=?, config=?, reminders_only=?, active=?, updated_at=datetime('now') WHERE id=?",
-        Some("UPDATE notifications SET name=$1, config=$2, reminders_only=$3, active=$4, updated_at=to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') WHERE id=$5"),
+        Some(
+            "UPDATE notifications SET name=$1, config=$2, reminders_only=$3, active=$4, updated_at=to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') WHERE id=$5",
+        ),
     );
     dispatch!(pool, |p| {
         sqlx::query(&sql)
@@ -543,7 +564,11 @@ pub async fn delete_user(pool: &DbPool, id: &str) -> Result<bool, sqlx::Error> {
 // -- Announcements --
 
 pub async fn list_announcements(pool: &DbPool) -> Result<Vec<Announcement>, sqlx::Error> {
-    let sql = sql_for(pool, "SELECT * FROM announcements ORDER BY created_at DESC", None);
+    let sql = sql_for(
+        pool,
+        "SELECT * FROM announcements ORDER BY created_at DESC",
+        None,
+    );
     dispatch!(pool, |p| {
         sqlx::query_as::<_, Announcement>(&sql).fetch_all(p).await
     })
@@ -579,15 +604,26 @@ pub async fn create_announcement(
 // -- Incidents --
 
 pub async fn list_incidents(pool: &DbPool, limit: i64) -> Result<Vec<Incident>, sqlx::Error> {
-    let sql = sql_for(pool, "SELECT * FROM incidents ORDER BY started_at DESC LIMIT ?", None);
+    let sql = sql_for(
+        pool,
+        "SELECT * FROM incidents ORDER BY started_at DESC LIMIT ?",
+        None,
+    );
     dispatch!(pool, |p| {
-        sqlx::query_as::<_, Incident>(&sql).bind(limit).fetch_all(p).await
+        sqlx::query_as::<_, Incident>(&sql)
+            .bind(limit)
+            .fetch_all(p)
+            .await
     })
 }
 
 pub async fn create_incident(pool: &DbPool, monitor_id: &str) -> Result<Incident, sqlx::Error> {
     let id = Uuid::new_v4().to_string();
-    let sql = sql_for(pool, "INSERT INTO incidents (id, monitor_id) VALUES (?, ?)", None);
+    let sql = sql_for(
+        pool,
+        "INSERT INTO incidents (id, monitor_id) VALUES (?, ?)",
+        None,
+    );
     dispatch!(pool, |p| {
         sqlx::query(&sql)
             .bind(&id)
@@ -598,7 +634,10 @@ pub async fn create_incident(pool: &DbPool, monitor_id: &str) -> Result<Incident
     })?;
     let sel = sql_for(pool, "SELECT * FROM incidents WHERE id = ?", None);
     dispatch!(pool, |p| {
-        sqlx::query_as::<_, Incident>(&sel).bind(&id).fetch_one(p).await
+        sqlx::query_as::<_, Incident>(&sel)
+            .bind(&id)
+            .fetch_one(p)
+            .await
     })
 }
 
@@ -606,7 +645,9 @@ pub async fn resolve_incident(pool: &DbPool, monitor_id: &str) -> Result<(), sql
     let sql = sql_for(
         pool,
         "UPDATE incidents SET resolved_at = datetime('now'), status = 'resolved' WHERE monitor_id = ? AND resolved_at IS NULL",
-        Some("UPDATE incidents SET resolved_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'), status = 'resolved' WHERE monitor_id = $1 AND resolved_at IS NULL"),
+        Some(
+            "UPDATE incidents SET resolved_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'), status = 'resolved' WHERE monitor_id = $1 AND resolved_at IS NULL",
+        ),
     );
     dispatch!(pool, |p| {
         sqlx::query(&sql)

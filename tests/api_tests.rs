@@ -50,11 +50,7 @@ async fn post(router: &mut axum::Router, path: &str, payload: &Value) -> (u16, V
 
 // -- Daily Uptime --
 
-async fn insert_checks_at(
-    pool: &DbPool,
-    monitor_id: &str,
-    entries: &[(&str, &str, Option<i64>)],
-) {
+async fn insert_checks_at(pool: &DbPool, monitor_id: &str, entries: &[(&str, &str, Option<i64>)]) {
     for (timestamp, status, rt) in entries {
         sqlx::query(
             "INSERT INTO checks (monitor_id, status, response_time_ms, checked_at) VALUES (?, ?, ?, ?)"

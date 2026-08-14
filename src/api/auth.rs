@@ -32,30 +32,29 @@ pub async fn login(
 
     if let Some(user) = user {
         let parsed = PasswordHash::new(&user.password_hash).ok();
-        if let Some(parsed_hash) = parsed {
-            if Argon2::default()
+        if let Some(parsed_hash) = parsed
+            && Argon2::default()
                 .verify_password(input.password.as_bytes(), &parsed_hash)
                 .is_ok()
-            {
-                let claims = Claims {
-                    sub: user.username.clone(),
-                    exp: chrono::Utc::now().timestamp() as usize + 86400 * 7, // 7 days
-                };
-                let token = encode(
-                    &Header::default(),
-                    &claims,
-                    &EncodingKey::from_secret(state.config.jwt_secret.as_bytes()),
-                )
-                .unwrap();
-                return (
-                    StatusCode::OK,
-                    Json(LoginResponse {
-                        token,
-                        must_change_password: user.must_change_password != 0,
-                    }),
-                )
-                    .into_response();
-            }
+        {
+            let claims = Claims {
+                sub: user.username.clone(),
+                exp: chrono::Utc::now().timestamp() as usize + 86400 * 7, // 7 days
+            };
+            let token = encode(
+                &Header::default(),
+                &claims,
+                &EncodingKey::from_secret(state.config.jwt_secret.as_bytes()),
+            )
+            .unwrap();
+            return (
+                StatusCode::OK,
+                Json(LoginResponse {
+                    token,
+                    must_change_password: user.must_change_password != 0,
+                }),
+            )
+                .into_response();
         }
     }
 
@@ -91,7 +90,7 @@ pub async fn change_password(
 
     // Verify current password
     let parsed = PasswordHash::new(&user.password_hash).ok();
-    let valid = parsed.map_or(false, |h| {
+    let valid = parsed.is_some_and(|h| {
         Argon2::default()
             .verify_password(input.current_password.as_bytes(), &h)
             .is_ok()

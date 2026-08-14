@@ -33,10 +33,10 @@ pub async fn atom(State(state): State<AppState>, Query(q): Query<FeedQuery>) -> 
 
     let mut xml = String::from(r#"<?xml version="1.0" encoding="utf-8"?>"#);
     xml.push_str(r#"<feed xmlns="http://www.w3.org/2005/Atom">"#);
-    xml.push_str(&format!("<title>Vigilant Status</title>"));
-    xml.push_str(&format!("<link href=\"/status\" rel=\"alternate\" />"));
-    xml.push_str(&format!("<link href=\"/api/feed/atom\" rel=\"self\" />"));
-    xml.push_str(&format!("<id>urn:vigilant:status</id>"));
+    xml.push_str("<title>Vigilant Status</title>");
+    xml.push_str("<link href=\"/status\" rel=\"alternate\" />");
+    xml.push_str("<link href=\"/api/feed/atom\" rel=\"self\" />");
+    xml.push_str("<id>urn:vigilant:status</id>");
     xml.push_str(&format!("<updated>{}</updated>", escape_xml(&updated)));
 
     for (incident, monitor_name) in &incidents {
@@ -71,7 +71,7 @@ pub async fn atom(State(state): State<AppState>, Query(q): Query<FeedQuery>) -> 
                 escape_xml(&incident.started_at)
             ));
         }
-        xml.push_str(&format!("<link href=\"/status\" />"));
+        xml.push_str("<link href=\"/status\" />");
         xml.push_str("</entry>");
     }
 

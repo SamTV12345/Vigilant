@@ -3,13 +3,13 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use crate::db::DbPool;
+use crate::db::models::Notification;
 use lettre::message::Mailbox;
 use lettre::{Message, SmtpTransport, Transport};
 use log::{debug, error, info, warn};
 use serde::Serialize;
 use serde_json::Value;
-use crate::db::DbPool;
-use crate::db::models::Notification;
 
 pub struct NotifierState {
     pool: DbPool,
@@ -412,7 +412,7 @@ fn send_pushover(config: &Value, monitor_name: &str, old_status: &str, new_statu
         token: token.into(),
         user: user.into(),
         message: format!("{old_status} → {new_status}"),
-        title: format!("{monitor_name}"),
+        title: monitor_name.to_string(),
         device,
     };
 
